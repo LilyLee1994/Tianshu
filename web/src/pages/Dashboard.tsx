@@ -18,10 +18,16 @@ export default function Dashboard() {
   const loadRun = () => _s.from('sync_runs').select('started_at, ok, error, summary').order('started_at', { ascending: false }).limit(1).then(({ data }) => setRun(data?.[0] ?? null))
   useEffect(() => { loadRun() }, [])
   const syncNow = async () => {
-    setSyncing(true); setSyncMsg('正在同步，最长约一两分钟，请不要关页面…')
-    const [r, e] = await callApi<{ summary: Record<string, unknown> }>('cron-hostaway', {})
+    setSyncing(true)
+    for (let i = 0; i < 25; i++) {
+      setSyncMsg(`正在同步…（第 ${i + 1} 轮，每轮最长约 1 分钟，请不要关页面）`)
+      const [r, e] = await callApi<{ done: boolean; phase?: string; calOffset?: number; total?: number; summary?: Record<string, unknown> }>('cron-hostaway', {})
+      if (e || !r) { setSyncMsg(`同步失败：${e}。可以稍后再点一次，会接着上次的进度做。`); break }
+      if (r.done) { setSyncMsg(`同步完成：${JSON.stringify(r.summary)}`); break }
+      const names: Record<string, string> = { reservations: '订单', cleaning: '自动派清洁', reviews: '评价', calendar: `日历价格 ${r.calOffset}/${r.total}` }
+      setSyncMsg(`正在同步：${names[r.phase ?? ''] ?? r.phase}…`)
+    }
     setSyncing(false)
-    setSyncMsg(e ? `同步失败：${e}` : `同步完成：${JSON.stringify(r!.summary)}`)
     loadRun()
   }
   const [todos, setTodos] = useState<Todo[]>([])

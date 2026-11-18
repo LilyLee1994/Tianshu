@@ -1,5 +1,10 @@
 {
   "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }],
-  "crons": [{ "path": "/api/cron-hostaway", "schedule": "0 17 * * *" }],
-  "functions": { "api/cron-hostaway.ts": { "maxDuration": 300 } }
+  "crons": [
+    { "path": "/api/cron-hostaway", "schedule": "0 17 * * *" },
+    { "path": "/api/cron-hostaway", "schedule": "10 17 * * *" },
+    { "path": "/api/cron-hostaway", "schedule": "20 17 * * *" },
+    { "path": "/api/cron-hostaway", "schedule": "30 17 * * *" }
+  ],
+  "functions": { "api/cron-hostaway.ts": { "maxDuration": 60 } }
 }
