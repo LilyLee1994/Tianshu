@@ -4,7 +4,7 @@ import { callApi } from '../lib/api'
 import { ROLE_LABEL, type Role } from '../lib/auth'
 
 interface User { id: string; account: string; name: string; role: Role; contact: string | null; active: boolean }
-interface Prop { id: number; name: string; region: string | null; assistant_id: string | null }
+interface Prop { id: number; name: string; region: string | null; assistant_id: string | null; cleaning_by: string }
 
 export default function Accounts() {
   const [users, setUsers] = useState<User[]>([])
@@ -17,7 +17,7 @@ export default function Accounts() {
   const load = useCallback(async () => {
     const [u, p] = await Promise.all([
       supabase.from('profiles').select('id, account, name, role, contact, active').order('created_at'),
-      supabase.from('properties').select('id, name, region, assistant_id').order('name'),
+      supabase.from('properties').select('id, name, region, assistant_id, cleaning_by').order('name'),
     ])
     if (u.data) setUsers(u.data as User[])
     if (p.data) setProps(p.data as Prop[])
@@ -38,6 +38,13 @@ export default function Accounts() {
     const [, e] = await callApi('set-active', { userId: u.id, active: !u.active })
     if (e) { setErr(e); return }
     setMsg(`${u.active ? '已停用' : '已启用'} ${u.name}`)
+    load()
+  }
+  const setCleaning = async (p: Prop, v: string) => {
+    setErr(''); setMsg('')
+    const { data, error } = await supabase.from('properties').update({ cleaning_by: v }).eq('id', p.id).select('id')
+    if (error || !data?.length) { setErr(error?.message ?? '没有权限。'); return }
+    setMsg(`${p.name} 的清洁改为：${v}`)
     load()
   }
   const assign = async (p: Prop, uid: string) => {
@@ -84,7 +91,7 @@ export default function Accounts() {
       <h2 style={{ marginTop: 28 }}>房源分配</h2>
       <div className="table-wrap">
         <table style={{ minWidth: 520 }}>
-          <thead><tr><th>房源</th><th>区域</th><th>主责助理</th></tr></thead>
+          <thead><tr><th>房源</th><th>区域</th><th>主责助理</th><th>清洁由谁做</th></tr></thead>
           <tbody>
             {props.map((p) => (
               <tr key={p.id}>
@@ -92,13 +99,14 @@ export default function Accounts() {
                 <td><select value={p.assistant_id ?? ''} onChange={(e) => assign(p, e.target.value)}>
                   <option value="">未分配</option>{assistants.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
                 </select></td>
+                <td><select value={p.cleaning_by} onChange={(e) => setCleaning(p, e.target.value)}><option>清洁公司</option><option>房东自己</option></select></td>
               </tr>
             ))}
           </tbody>
         </table>
         {!props.length && <p className="muted pad">还没有房源。</p>}
       </div>
-      <p className="muted small">分配后，该房源的新工单和通知都发给主责助理。</p>
+      <p className="muted small">分配后，该房源的新工单和通知都发给主责助理。清洁选“房东自己”的房源，退房后不会自动生成清洁单。</p>
 
       {adding && <AddUser onClose={() => setAdding(false)} onDone={(name, password) => { setAdding(false); setSecret({ title: `已创建账号 ${name}，初始密码`, password }); load() }} />}
     </div>

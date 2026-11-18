@@ -42,8 +42,10 @@ export default async function handler(req: Req, res: Res) {
 
     // 1.5) 自动派清洁：今天和明天退房的订单，各生成一张清洁单，派给房源的默认清洁公司
     const active = (st: string | null) => !/cancel|inquiry|declin|expire|denied/i.test(st ?? '')
+    // 房东自己做清洁的房源不生成清洁单。
     // 只有一家清洁公司：直接派给唯一启用的清洁公司账号；有多个时，用房源上指定的，没指定就进待派单
-    const { data: cleanProps } = await db.from('properties').select('id, cleaner_id')
+    const { data: cleanProps } = await db.from('properties').select('id, cleaner_id, cleaning_by')
+    const ownerCleans = new Set((cleanProps ?? []).filter((p) => p.cleaning_by === '房东自己').map((p) => p.id as number))
     const { data: cleanerAccts } = await db.from('profiles').select('id').eq('role', 'cleaner').eq('active', true)
     const onlyCleaner = cleanerAccts?.length === 1 ? (cleanerAccts[0].id as string) : null
     const cleanerOf = new Map((cleanProps ?? []).map((p) => [p.id as number, (p.cleaner_id as string | null) ?? onlyCleaner]))
@@ -56,7 +58,7 @@ export default async function handler(req: Req, res: Res) {
       .not('property_id', 'is', null).gte('departure_date', today).lte('departure_date', addDays(today, 1))
     const { data: have } = await db.from('work_orders').select('reservation_id').eq('type', '清洁').not('reservation_id', 'is', null)
     const haveSet = new Set((have ?? []).map((h) => Number(h.reservation_id)))
-    const newOrders = (outs ?? []).filter((r) => active(r.status) && !haveSet.has(Number(r.id))).map((r) => {
+    const newOrders = (outs ?? []).filter((r) => active(r.status) && !haveSet.has(Number(r.id)) && !ownerCleans.has(r.property_id as number)).map((r) => {
       const dep = String(r.departure_date)
       const urgent = arrivals.some((a) => a.property_id === r.property_id && a.id !== r.id && String(a.arrival_date) >= dep && String(a.arrival_date) <= addDays(dep, 1))
       const cleaner = cleanerOf.get(r.property_id as number) ?? null
