@@ -42,8 +42,11 @@ export default async function handler(req: Req, res: Res) {
 
     // 1.5) 自动派清洁：今天和明天退房的订单，各生成一张清洁单，派给房源的默认清洁公司
     const active = (st: string | null) => !/cancel|inquiry|declin|expire|denied/i.test(st ?? '')
+    // 只有一家清洁公司：直接派给唯一启用的清洁公司账号；有多个时，用房源上指定的，没指定就进待派单
     const { data: cleanProps } = await db.from('properties').select('id, cleaner_id')
-    const cleanerOf = new Map((cleanProps ?? []).map((p) => [p.id as number, p.cleaner_id as string | null]))
+    const { data: cleanerAccts } = await db.from('profiles').select('id').eq('role', 'cleaner').eq('active', true)
+    const onlyCleaner = cleanerAccts?.length === 1 ? (cleanerAccts[0].id as string) : null
+    const cleanerOf = new Map((cleanProps ?? []).map((p) => [p.id as number, (p.cleaner_id as string | null) ?? onlyCleaner]))
     const { data: near } = await db.from('reservations')
       .select('id, property_id, arrival_date, departure_date, status, guest_name')
       .not('property_id', 'is', null).gte('arrival_date', today).lte('arrival_date', addDays(today, 4))

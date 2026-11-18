@@ -39,7 +39,6 @@ export default function Properties() {
   const isAssistant = profile?.role === 'assistant'
   const [rows, setRows] = useState<Row[]>([])
   const [assistants, setAssistants] = useState<Assistant[]>([])
-  const [cleaners, setCleaners] = useState<Assistant[]>([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
   const [scope, setScope] = useState<'mine' | 'all'>('mine')
@@ -53,17 +52,15 @@ export default function Properties() {
   const [syncKeys, setSyncKeys] = useState('')
 
   const load = useCallback(async () => {
-    const [p, a, cl] = await Promise.all([
+    const [p, a] = await Promise.all([
       supabase.from('properties')
-        .select('id, name, address, region, assistant_id, airbnb_url, booking_url, legacy, hostaway_id, cleaner_id, assistant:profiles!assistant_id(name), cleaner:profiles!cleaner_id(name), property_details(*), property_contracts(*)')
+        .select('id, name, address, region, assistant_id, airbnb_url, booking_url, legacy, hostaway_id, assistant:profiles!assistant_id(name), property_details(*), property_contracts(*)')
         .order('name'),
       supabase.from('profiles').select('id, name').eq('role', 'assistant').eq('active', true).order('name'),
-      supabase.from('profiles').select('id, name').eq('role', 'cleaner').eq('active', true).order('name'),
     ])
     if (p.error) setErr(p.error.message)
     else setRows(p.data as unknown as Row[])
     if (a.data) setAssistants(a.data as Assistant[])
-    if (cl.data) setCleaners(cl.data as Assistant[])
     setLoading(false)
   }, [])
   useEffect(() => { load() }, [load])
@@ -139,7 +136,7 @@ export default function Properties() {
             {!list.length && <p className="muted pad">{isAssistant ? '你还没有被分配房源。' : '还没有房源，点右上角“新增房源”。'}</p>}
           </div>
           {cur && (editing
-            ? <EditForm key={cur.id} row={cur} isAdmin={isAdmin} assistants={assistants} cleaners={cleaners} onCancel={() => setEditing(false)} onSaved={() => afterSave('已保存。')} />
+            ? <EditForm key={cur.id} row={cur} isAdmin={isAdmin} assistants={assistants} onCancel={() => setEditing(false)} onSaved={() => afterSave('已保存。')} />
             : <Detail row={cur} canEdit={canEdit} onEdit={() => { setEditing(true); setMsg('') }} />)}
         </div>
       )}
@@ -161,7 +158,6 @@ function Detail({ row: r, canEdit, onEdit }: { row: Row; canEdit: boolean; onEdi
         <dt>地址</dt><dd>{dash(r.address)}</dd>
         <dt>区域</dt><dd>{dash(r.region)}</dd>
         <dt>主责助理</dt><dd>{dash(r.assistant?.name)}</dd>
-        <dt>默认清洁公司</dt><dd>{dash(r.cleaner?.name)}</dd>
         <dt>户型</dt><dd>{dash(d?.bedrooms)} 房 {dash(d?.bathrooms)} 卫 · 可住 {dash(d?.max_guests)} 人</dd>
         <dt>床</dt><dd>{dash(d?.beds)}</dd>
         <dt>家电设施</dt><dd>{d?.appliances?.length ? d.appliances.join('、') : '—'}</dd>
@@ -184,9 +180,9 @@ function Detail({ row: r, canEdit, onEdit }: { row: Row; canEdit: boolean; onEdi
   )
 }
 
-function EditForm({ row, isAdmin, assistants, cleaners, onCancel, onSaved }: { row: Row; isAdmin: boolean; assistants: Assistant[]; cleaners: Assistant[]; onCancel: () => void; onSaved: () => void }) {
+function EditForm({ row, isAdmin, assistants, onCancel, onSaved }: { row: Row; isAdmin: boolean; assistants: Assistant[]; onCancel: () => void; onSaved: () => void }) {
   const d = row.property_details, c = row.property_contracts
-  const [p, setP] = useState({ name: row.name, address: row.address ?? '', region: row.region ?? '', assistant_id: row.assistant_id ?? '', cleaner_id: row.cleaner_id ?? '', airbnb_url: row.airbnb_url ?? '', booking_url: row.booking_url ?? '', hostaway_id: row.hostaway_id?.toString() ?? '' })
+  const [p, setP] = useState({ name: row.name, address: row.address ?? '', region: row.region ?? '', assistant_id: row.assistant_id ?? '', airbnb_url: row.airbnb_url ?? '', booking_url: row.booking_url ?? '', hostaway_id: row.hostaway_id?.toString() ?? '' })
   const [dt, setDt] = useState({
     bedrooms: d?.bedrooms?.toString() ?? '', bathrooms: d?.bathrooms?.toString() ?? '', max_guests: d?.max_guests?.toString() ?? '',
     beds: d?.beds ?? '', appliances: (d?.appliances ?? []).join('，'),
@@ -215,7 +211,7 @@ function EditForm({ row, isAdmin, assistants, cleaners, onCancel, onSaved }: { r
     ]
     if (!row.legacy) jobs.push(supabase.from('property_contracts').update({ ...ct, end_date: ct.end_date || null }).eq('property_id', row.id).select('property_id'))
     if (isAdmin) jobs.push(supabase.from('properties').update({
-      name: p.name.trim(), address: txt(p.address), region: txt(p.region), assistant_id: p.assistant_id || null, cleaner_id: p.cleaner_id || null, airbnb_url: txt(p.airbnb_url), booking_url: txt(p.booking_url), hostaway_id: num(p.hostaway_id),
+      name: p.name.trim(), address: txt(p.address), region: txt(p.region), assistant_id: p.assistant_id || null, airbnb_url: txt(p.airbnb_url), booking_url: txt(p.booking_url), hostaway_id: num(p.hostaway_id),
     }).eq('id', row.id).select('id'))
     const res = await Promise.all(jobs)
     setBusy(false)
@@ -239,9 +235,6 @@ function EditForm({ row, isAdmin, assistants, cleaners, onCancel, onSaved }: { r
           {f('房源名称', p.name, (v) => setP({ ...p, name: v }))}
           {f('地址', p.address, (v) => setP({ ...p, address: v }))}
           {f('区域', p.region, (v) => setP({ ...p, region: v }))}
-          <label>默认清洁公司（退房后自动派单给它）<select value={p.cleaner_id} onChange={(e) => setP({ ...p, cleaner_id: e.target.value })}>
-            <option value="">未指定（清洁单进待派单）</option>{cleaners.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-          </select></label>
           {f('Airbnb 房源链接', p.airbnb_url, (v) => setP({ ...p, airbnb_url: v }))}
           {f('Booking 房源链接', p.booking_url, (v) => setP({ ...p, booking_url: v }))}
           {!row.legacy && f('Hostaway 房源 ID（选填：房源在 Hostaway 上架后填，同步时就能对上）', p.hostaway_id, (v) => setP({ ...p, hostaway_id: v }))}
