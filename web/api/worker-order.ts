@@ -1,4 +1,4 @@
-import { adminClient, requireWorker, type Req, type Res } from './_lib'
+import { adminClient, requireWorker, type Req, type Res } from './_lib.js'
 
 // 工单详情。地址和进门方式只在该看的时候给：
 // 清洁公司：派单后到完成前；维修师傅：接单后到提交完成前。

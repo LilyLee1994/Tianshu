@@ -1,4 +1,4 @@
-import { adminClient, genPassword, requireAdmin, type Req, type Res } from './_lib'
+import { adminClient, genPassword, requireAdmin, type Req, type Res } from './_lib.js'
 
 export default async function handler(req: Req, res: Res) {
   try {

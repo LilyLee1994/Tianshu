@@ -1,4 +1,4 @@
-import { adminClient, requireWorker, type Req, type Res } from './_lib'
+import { adminClient, requireWorker, type Req, type Res } from './_lib.js'
 
 // 列出派给我的工单（不含地址和密码）
 export default async function handler(req: Req, res: Res) {

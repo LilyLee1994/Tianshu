@@ -1,4 +1,4 @@
-import { adminClient, emailOf, genPassword, requireAdmin, type Req, type Res } from './_lib'
+import { adminClient, emailOf, genPassword, requireAdmin, type Req, type Res } from './_lib.js'
 
 const ROLES = ['admin', 'assistant', 'ops', 'finance', 'repairman', 'cleaner']
 

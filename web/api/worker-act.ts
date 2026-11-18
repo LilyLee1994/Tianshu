@@ -1,4 +1,4 @@
-import { adminClient, requireWorker, sydneyToday, type Req, type Res } from './_lib'
+import { adminClient, requireWorker, sydneyToday, type Req, type Res } from './_lib.js'
 
 // 师傅 / 清洁公司提交动作：接单、提交完成、上报损坏
 export default async function handler(req: Req, res: Res) {
