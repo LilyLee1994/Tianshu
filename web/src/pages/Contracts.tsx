@@ -13,13 +13,13 @@ export default function Contracts() {
   const [rows, setRows] = useState<Row[]>([])
   const [loading, setLoading] = useState(true)
   useEffect(() => {
-    supabase.from('properties').select('id, name, property_contracts(*)').order('name').then(({ data }) => { setRows((data ?? []) as unknown as Row[]); setLoading(false) })
+    supabase.from('properties').select('id, name, property_contracts(*)').eq('legacy', false).order('name').then(({ data }) => { setRows((data ?? []) as unknown as Row[]); setLoading(false) })
   }, [])
   if (loading) return <p className="muted">加载中…</p>
   return (
     <div>
       <h1>合同财务</h1>
-      <p className="muted">每个房源的水电燃气网络由谁交费、合同到期日。要修改，请到“房源档案”里编辑。</p>
+      <p className="muted">新增房源的水电燃气网络由谁交费、合同到期日（从 Hostaway 同步来的历史房源不用登记，这里不显示）。要修改，请到“房源档案”里编辑。</p>
       <div className="table-wrap">
         <table style={{ minWidth: 860 }}>
           <thead><tr><th>房源</th><th>水</th><th>电</th><th>燃气</th><th>网络</th><th>代缴扣回</th><th>合同到期</th><th>状态</th></tr></thead>
@@ -36,7 +36,7 @@ export default function Contracts() {
             })}
           </tbody>
         </table>
-        {!rows.length && <p className="muted pad">还没有房源。</p>}
+        {!rows.length && <p className="muted pad">还没有需要登记合同的新房源。</p>}
       </div>
     </div>
   )

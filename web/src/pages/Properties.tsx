@@ -14,7 +14,7 @@ interface Contract {
 }
 interface Row {
   id: number; name: string; address: string | null; region: string | null; assistant_id: string | null
-  airbnb_url: string | null; booking_url: string | null
+  airbnb_url: string | null; booking_url: string | null; legacy: boolean
   assistant: { name: string } | null
   property_details: Details | null
   property_contracts: Contract | null
@@ -24,7 +24,8 @@ interface Assistant { id: string; name: string }
 const dash = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : String(v))
 const PAY = ['未填', '房东', '公司代缴']
 
-export function statusOf(c: Contract | null) {
+export function statusOf(c: Contract | null, legacy = false) {
+  if (legacy) return '运营中'
   if (!c) return '待登记合同'
   const full = [c.water, c.power, c.gas, c.internet].every((x) => x !== '未填') && !!c.end_date
   if (!full) return '待登记合同'
@@ -53,7 +54,7 @@ export default function Properties() {
   const load = useCallback(async () => {
     const [p, a] = await Promise.all([
       supabase.from('properties')
-        .select('id, name, address, region, assistant_id, airbnb_url, booking_url, assistant:profiles!assistant_id(name), property_details(*), property_contracts(*)')
+        .select('id, name, address, region, assistant_id, airbnb_url, booking_url, legacy, assistant:profiles!assistant_id(name), property_details(*), property_contracts(*)')
         .order('name'),
       supabase.from('profiles').select('id, name').eq('role', 'assistant').eq('active', true).order('name'),
     ])
@@ -129,7 +130,7 @@ export default function Properties() {
           <div className="side-list">
             {list.map((r) => (
               <button key={r.id} className={cur?.id === r.id ? 'item on' : 'item'} onClick={() => { setSel(r.id); setEditing(false); setMsg('') }}>
-                <span>{r.name}</span><span className={statusClass(statusOf(r.property_contracts))}>{statusOf(r.property_contracts)}</span>
+                <span>{r.name}</span><span className={statusClass(statusOf(r.property_contracts, r.legacy))}>{statusOf(r.property_contracts, r.legacy)}</span>
               </button>
             ))}
             {!list.length && <p className="muted pad">{isAssistant ? '你还没有被分配房源。' : '还没有房源，点右上角“新增房源”。'}</p>}
@@ -146,7 +147,7 @@ export default function Properties() {
 }
 
 function Detail({ row: r, canEdit, onEdit }: { row: Row; canEdit: boolean; onEdit: () => void }) {
-  const d = r.property_details, c = r.property_contracts, st = statusOf(c)
+  const d = r.property_details, c = r.property_contracts, st = statusOf(c, r.legacy)
   return (
     <section className="card">
       <div className="title-row">
@@ -164,9 +165,11 @@ function Detail({ row: r, canEdit, onEdit }: { row: Row; canEdit: boolean; onEdi
         <dt>WiFi</dt><dd>{dash(d?.wifi_name)} / {dash(d?.wifi_password)}</dd>
         <dt>停车 / 垃圾日</dt><dd>{dash(d?.parking)} / {dash(d?.bin_day)}</dd>
         <dt>注意事项</dt><dd>{dash(d?.notes)}</dd>
-        <dt>水电燃气网络</dt>
-        <dd>水 {dash(c?.water)} · 电 {dash(c?.power)} · 燃气 {dash(c?.gas)} · 网络 {dash(c?.internet)}</dd>
-        <dt>合同</dt><dd>到期 {dash(c?.end_date)} · 代缴费用是否扣回 {dash(c?.recharge_back)}</dd>
+        {!r.legacy && <>
+          <dt>水电燃气网络</dt>
+          <dd>水 {dash(c?.water)} · 电 {dash(c?.power)} · 燃气 {dash(c?.gas)} · 网络 {dash(c?.internet)}</dd>
+          <dt>合同</dt><dd>到期 {dash(c?.end_date)} · 代缴费用是否扣回 {dash(c?.recharge_back)}</dd>
+        </>}
       </dl>
       <div className="plats">
         <div className="plat"><b>Airbnb</b>{r.airbnb_url ? <a href={r.airbnb_url.startsWith('http') ? r.airbnb_url : `https://${r.airbnb_url}`} target="_blank" rel="noreferrer">打开房源页</a> : <span className="muted">还没填链接</span>}<span className="muted small">评分和上线状态：等每日同步接入</span></div>
@@ -205,8 +208,8 @@ function EditForm({ row, isAdmin, assistants, onCancel, onSaved }: { row: Row; i
         lock_location: txt(dt.lock_location), lock_code: txt(dt.lock_code), wifi_name: txt(dt.wifi_name), wifi_password: txt(dt.wifi_password),
         parking: txt(dt.parking), bin_day: txt(dt.bin_day), notes: txt(dt.notes),
       }).eq('property_id', row.id).select('property_id'),
-      supabase.from('property_contracts').update({ ...ct, end_date: ct.end_date || null }).eq('property_id', row.id).select('property_id'),
     ]
+    if (!row.legacy) jobs.push(supabase.from('property_contracts').update({ ...ct, end_date: ct.end_date || null }).eq('property_id', row.id).select('property_id'))
     if (isAdmin) jobs.push(supabase.from('properties').update({
       name: p.name.trim(), address: txt(p.address), region: txt(p.region), assistant_id: p.assistant_id || null, airbnb_url: txt(p.airbnb_url), booking_url: txt(p.booking_url),
     }).eq('id', row.id).select('id'))
@@ -251,7 +254,7 @@ function EditForm({ row, isAdmin, assistants, onCancel, onSaved }: { row: Row; i
         {f('收垃圾日', dt.bin_day, (v) => setDt({ ...dt, bin_day: v }))}
         {f('注意事项', dt.notes, (v) => setDt({ ...dt, notes: v }), true)}
       </div>
-      <h3>合同与水电燃气</h3>
+      {!row.legacy && <><h3>合同与水电燃气</h3>
       <div className="form-grid">
         {sel('水', ct.water, PAY, (v) => setCt({ ...ct, water: v }))}
         {sel('电', ct.power, PAY, (v) => setCt({ ...ct, power: v }))}
@@ -260,7 +263,7 @@ function EditForm({ row, isAdmin, assistants, onCancel, onSaved }: { row: Row; i
         {sel('代缴费用是否从房东结算里扣回', ct.recharge_back, ['未填', '是', '否'], (v) => setCt({ ...ct, recharge_back: v }))}
         <label>合同到期日<input type="date" value={ct.end_date} onChange={(e) => setCt({ ...ct, end_date: e.target.value })} /></label>
         {sel('运营阶段', ct.base_status, ['筹备中', '运营中'], (v) => setCt({ ...ct, base_status: v as Contract['base_status'] }))}
-      </div>
+      </div></>}
       {err && <div className="err">{err}</div>}
       <div className="btn-row">
         <button className="primary small-btn" disabled={busy} onClick={save}>{busy ? '保存中…' : '保存'}</button>

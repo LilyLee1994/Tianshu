@@ -59,7 +59,7 @@ export default async function handler(req: Req, res: Res) {
         updated++
       } else {
         const { data, error } = await db.from('properties')
-          .insert({ name, address, region, hostaway_id: hid, hostaway_synced_at: new Date().toISOString() }).select('id').single()
+          .insert({ name, address, region, hostaway_id: hid, legacy: true, hostaway_synced_at: new Date().toISOString() }).select('id').single()
         if (error || !data) { skipped.push(`${name}：${error?.code === '23505' ? '名称重复' : error?.message}`); continue }
         pid = data.id as number
         created++
