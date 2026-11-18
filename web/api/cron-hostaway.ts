@@ -10,6 +10,9 @@ const dateOnly = (v: unknown) => (v ? String(v).slice(0, 10) : null)
 const addDays = (d: string, n: number) => new Date(new Date(d).getTime() + n * 86400000).toISOString().slice(0, 10)
 const active = (st: string | null) => !/cancel|inquiry|declin|expire|denied/i.test(st ?? '')
 
+const channelOf = (cid: number, name?: unknown) =>
+  cid === 2000 ? 'Airbnb' : cid === 2005 ? 'Booking.com' : cid === 2002 ? 'Vrbo' : name ? String(name) : cid ? `渠道${cid}` : null
+
 type Phase = 'reservations' | 'cleaning' | 'reviews' | 'calendar' | 'done'
 interface State { phase: Phase; calOffset: number; resOffset?: number; revOffset?: number; lastFirst?: Record<string, number>; counts: Record<string, unknown>; failed: string[] }
 
@@ -70,7 +73,7 @@ export default async function handler(req: Req, res: Res) {
       const finished = await pull(`/reservations?departureStartDate=${addDays(today, -90)}`, 'resOffset', async (resv) => {
         const rows = resv.map((r) => ({
           id: Number(r.id), property_id: byHost.get(Number(r.listingMapId)) ?? null, listing_id: num(r.listingMapId),
-          channel_name: r.channelName ?? null, status: r.status ?? null,
+          channel_name: channelOf(Number(r.channelId), r.channelName), status: r.status ?? null,
           guest_name: r.guestName ?? ([r.guestFirstName, r.guestLastName].filter(Boolean).join(' ') || null),
           arrival_date: dateOnly(r.arrivalDate), departure_date: dateOnly(r.departureDate), nights: num(r.nights),
           total_price: num(r.totalPrice), cleaning_fee: num(r.cleaningFee), channel_commission: num(r.channelCommissionAmount),
@@ -98,7 +101,7 @@ export default async function handler(req: Req, res: Res) {
         // 只要「客人评房东」且有评分的；房东评客人、没评分的不要
         const rv = revs.filter((r) => !/host-to-guest|host_to_guest/i.test(String(r.type ?? '')) && num(r.rating) !== null).map((r) => {
           const cid = Number(r.channelId)
-          const channel = cid === 2000 ? 'Airbnb' : cid === 2002 ? 'Booking.com' : (r.channelName ?? (cid ? `渠道${cid}` : null))
+          const channel = channelOf(cid, r.channelName)
           return {
             id: Number(r.id), property_id: byHost.get(Number(r.listingMapId)) ?? null, listing_id: num(r.listingMapId),
             channel_name: channel, rating: num(r.rating), reviewed_at: r.submittedAt ?? r.insertedOn ?? null, raw: r, synced_at: new Date().toISOString(),
