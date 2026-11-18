@@ -95,10 +95,15 @@ export default async function handler(req: Req, res: Res) {
     }
     if (st.phase === 'reviews') {
       const finished = await pull('/reviews', 'revOffset', async (revs) => {
-        const rv = revs.map((r) => ({
-          id: Number(r.id), property_id: byHost.get(Number(r.listingMapId)) ?? null, listing_id: num(r.listingMapId),
-          channel_name: r.channelName ?? null, rating: num(r.rating), reviewed_at: r.submittedAt ?? r.insertedOn ?? null, raw: r, synced_at: new Date().toISOString(),
-        })).filter((r) => r.id)
+        // 只要「客人评房东」且有评分的；房东评客人、没评分的不要
+        const rv = revs.filter((r) => !/host-to-guest|host_to_guest/i.test(String(r.type ?? '')) && num(r.rating) !== null).map((r) => {
+          const cid = Number(r.channelId)
+          const channel = cid === 2000 ? 'Airbnb' : cid === 2002 ? 'Booking.com' : (r.channelName ?? (cid ? `渠道${cid}` : null))
+          return {
+            id: Number(r.id), property_id: byHost.get(Number(r.listingMapId)) ?? null, listing_id: num(r.listingMapId),
+            channel_name: channel, rating: num(r.rating), reviewed_at: r.submittedAt ?? r.insertedOn ?? null, raw: r, synced_at: new Date().toISOString(),
+          }
+        }).filter((r) => r.id)
         if (rv.length) await db.from('reviews').upsert(rv, { onConflict: 'id' })
       })
       st.counts.reviews = st.revOffset ?? 0

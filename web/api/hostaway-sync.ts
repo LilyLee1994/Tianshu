@@ -33,6 +33,29 @@ async function allListings(t: string): Promise<any[]> {
 const str = (v: unknown) => (v === null || v === undefined || String(v).trim() === '' ? null : String(v).trim())
 const int = (v: unknown) => (v === null || v === undefined || Number.isNaN(Number(v)) ? null : Math.round(Number(v)))
 
+// 在房源数据里找 Airbnb / Booking 链接（字段名不固定，所以把所有文字字段扫一遍）
+function findLinks(l: Record<string, unknown>) {
+  let airbnb: string | null = null, booking: string | null = null
+  const walk = (v: unknown, depth: number) => {
+    if (depth > 4 || v === null || v === undefined) return
+    if (typeof v === 'string') {
+      const m = v.match(/https?:\/\/[^\s"']+/)
+      const u = m?.[0]
+      if (!u) return
+      if (!airbnb && /airbnb\.[a-z.]+\/rooms\/\d+/i.test(u)) airbnb = u.split('?')[0]
+      if (!booking && /booking\.com\/hotel\//i.test(u)) booking = u.split('?')[0]
+    } else if (Array.isArray(v)) v.forEach((x) => walk(x, depth + 1))
+    else if (typeof v === 'object') Object.values(v as object).forEach((x) => walk(x, depth + 1))
+  }
+  walk(l, 0)
+  if (!airbnb) {
+    for (const [k, v] of Object.entries(l)) {
+      if (/airbnb/i.test(k) && /id$/i.test(k) && /^\d{6,}$/.test(String(v ?? ''))) { airbnb = `https://www.airbnb.com/rooms/${v}`; break }
+    }
+  }
+  return { airbnb, booking }
+}
+
 export default async function handler(req: Req, res: Res) {
   try {
     const db = adminClient()
@@ -43,7 +66,7 @@ export default async function handler(req: Req, res: Res) {
     const byHost = new Map((existing ?? []).filter((p) => p.hostaway_id).map((p) => [Number(p.hostaway_id), p.id as number]))
     const byName = new Map((existing ?? []).filter((p) => !p.hostaway_id).map((p) => [String(p.name).toLowerCase(), p.id as number]))
 
-    let created = 0, updated = 0
+    let created = 0, updated = 0, airbnbFound = 0, bookingFound = 0
     const skipped: string[] = []
     for (const l of list) {
       const hid = Number(l.id)
@@ -65,6 +88,16 @@ export default async function handler(req: Req, res: Res) {
         created++
       }
 
+      // 平台链接：只在库里还是空的时候填，不覆盖手工填的
+      const links = findLinks(l)
+      if (links.airbnb) airbnbFound++
+      if (links.booking) bookingFound++
+      const { data: pl } = await db.from('properties').select('airbnb_url, booking_url').eq('id', pid).maybeSingle()
+      const lp: Record<string, string> = {}
+      if (!pl?.airbnb_url && links.airbnb) lp.airbnb_url = links.airbnb
+      if (!pl?.booking_url && links.booking) lp.booking_url = links.booking
+      if (Object.keys(lp).length) await db.from('properties').update(lp).eq('id', pid)
+
       // 基本情况：Hostaway 有的就更新；锁盒密码、WiFi 只在库里还是空的时候填
       const { data: cur } = await db.from('property_details').select('lock_code, wifi_name, wifi_password').eq('property_id', pid).maybeSingle()
       const patch: Record<string, unknown> = {
@@ -78,7 +111,7 @@ export default async function handler(req: Req, res: Res) {
 
     // 附上第一条原始数据的字段名，方便核对 Hostaway 实际给了哪些字段
     const sampleKeys = list[0] ? Object.keys(list[0]) : []
-    return res.status(200).json({ ok: true, total: list.length, created, updated, skipped, sampleKeys })
+    return res.status(200).json({ ok: true, total: list.length, created, updated, skipped, sampleKeys, airbnbFound, bookingFound })
   } catch (e) {
     return res.status(500).json({ error: (e as Error).message })
   }
