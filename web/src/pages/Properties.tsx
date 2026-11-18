@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
+import { callApi } from '../lib/api'
 
 interface Details {
   bedrooms: number | null; bathrooms: number | null; max_guests: number | null; beds: string | null; appliances: string[]
@@ -44,6 +45,8 @@ export default function Properties() {
   const [editing, setEditing] = useState(false)
   const [adding, setAdding] = useState(false)
   const [msg, setMsg] = useState('')
+  const [syncing, setSyncing] = useState(false)
+  const [syncErr, setSyncErr] = useState('')
 
   const load = useCallback(async () => {
     const [p, a] = await Promise.all([
@@ -71,15 +74,25 @@ export default function Properties() {
   if (loading) return <p className="muted">加载中…</p>
   if (err) return <p className="err">读取失败：{err}</p>
 
+  const sync = async () => {
+    setSyncing(true); setSyncErr(''); setMsg('')
+    const [r, e] = await callApi<{ total: number; created: number; updated: number; skipped: string[]; sampleKeys: string[] }>('hostaway-sync', {})
+    setSyncing(false)
+    if (e || !r) { setSyncErr(e ?? '同步失败'); return }
+    setMsg(`Hostaway 同步完成：共 ${r.total} 个，新增 ${r.created}，更新 ${r.updated}${r.skipped.length ? `，跳过 ${r.skipped.length}（${r.skipped.slice(0, 3).join('；')}）` : ''}。`)
+    await load()
+  }
+
   const afterSave = async (text: string) => { setEditing(false); setAdding(false); setMsg(text); await load() }
 
   return (
     <div>
       <div className="title-row">
         <h1>房源档案</h1>
-        {isAdmin && <button className="primary small-btn" onClick={() => { setAdding(true); setEditing(false) }}>＋ 新增房源</button>}
+        {isAdmin && <span className="btn-row" style={{ margin: 0 }}><button className="ghost" disabled={syncing} onClick={sync}>{syncing ? '同步中…' : '从 Hostaway 同步'}</button><button className="primary small-btn" onClick={() => { setAdding(true); setEditing(false) }}>＋ 新增房源</button></span>}
       </div>
       {msg && <div className="ok">{msg}</div>}
+      {syncErr && <div className="err-box">{syncErr}</div>}
       {isAssistant && (
         <div className="pills">
           <button className={scope === 'mine' ? 'pill on' : 'pill'} onClick={() => { setScope('mine'); setEditing(false) }}>自己的房源</button>

@@ -28,4 +28,5 @@ cd web && npm run build   # 产物在 web/dist
 - Root Directory 选 `web`
 - 环境变量（Settings → Environment Variables）：
   - `SUPABASE_SERVICE_ROLE_KEY`：Supabase → Project Settings → API Keys 里的 secret / service_role key（**只放这里，不要提交**）
+  - `HOSTAWAY_ACCOUNT_ID`、`HOSTAWAY_API_KEY`：Hostaway 设置里的 Account ID 和 API Key
 - `web/api/` 下的文件是服务端函数（创建账号、重置密码、师傅提交等）
