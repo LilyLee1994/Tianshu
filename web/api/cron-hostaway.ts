@@ -1,17 +1,17 @@
 import { adminClient, authenticate, sydneyToday, type Req, type Res } from './_lib.js'
-import { hostawayAll, hostawayGet, hostawayToken } from './_hostaway.js'
+import { hostawayGet, hostawayToken } from './_hostaway.js'
 
 // Hostaway 每日同步。一次调用最多跑约 45 秒，做不完就把进度存进数据库，下次调用接着做：
 //   阶段：订单 → 自动派清洁 → 评价 → 日历快照（每个房源未来 180 天，逐个房源）
 // 定时任务一天调用几次（vercel.json），管理员也可以在总览页点“立即同步”，页面会一直调用到完成。
-const BUDGET_MS = 45_000
+const BUDGET_MS = 40_000
 const num = (v: unknown) => (v === null || v === undefined || v === '' || Number.isNaN(Number(v)) ? null : Number(v))
 const dateOnly = (v: unknown) => (v ? String(v).slice(0, 10) : null)
 const addDays = (d: string, n: number) => new Date(new Date(d).getTime() + n * 86400000).toISOString().slice(0, 10)
 const active = (st: string | null) => !/cancel|inquiry|declin|expire|denied/i.test(st ?? '')
 
 type Phase = 'reservations' | 'cleaning' | 'reviews' | 'calendar' | 'done'
-interface State { phase: Phase; calOffset: number; counts: Record<string, unknown>; failed: string[] }
+interface State { phase: Phase; calOffset: number; resOffset?: number; revOffset?: number; counts: Record<string, unknown>; failed: string[] }
 
 export default async function handler(req: Req, res: Res) {
   const db = adminClient()
@@ -47,19 +47,34 @@ export default async function handler(req: Req, res: Res) {
     const { data: props } = await db.from('properties').select('id, hostaway_id, cleaning_by').not('hostaway_id', 'is', null).order('id')
     const byHost = new Map((props ?? []).map((p) => [Number(p.hostaway_id), p.id as number]))
 
-    if (st.phase === 'reservations' && left() > 30_000) {
-      const resv = await hostawayAll(t, `/reservations?departureStartDate=${addDays(today, -90)}`)
-      const rows = resv.map((r) => ({
-        id: Number(r.id), property_id: byHost.get(Number(r.listingMapId)) ?? null, listing_id: num(r.listingMapId),
-        channel_name: r.channelName ?? null, status: r.status ?? null,
-        guest_name: r.guestName ?? ([r.guestFirstName, r.guestLastName].filter(Boolean).join(' ') || null),
-        arrival_date: dateOnly(r.arrivalDate), departure_date: dateOnly(r.departureDate), nights: num(r.nights),
-        total_price: num(r.totalPrice), cleaning_fee: num(r.cleaningFee), channel_commission: num(r.channelCommissionAmount),
-        currency: r.currency ?? null, reserved_at: r.reservationDate ?? null, raw: r, synced_at: new Date().toISOString(),
-      })).filter((r) => r.id)
-      for (let i = 0; i < rows.length; i += 200) await db.from('reservations').upsert(rows.slice(i, i + 200), { onConflict: 'id' })
-      st.counts.reservations = rows.length
-      st.phase = 'cleaning'; await save()
+    // 分页拉取，每页写库后记下偏移量；时间不够就停下，下次接着拉
+    const pull = async (path: string, key: 'resOffset' | 'revOffset', handle: (rows: any[]) => Promise<void>) => {
+      while (left() > 10_000) {
+        const off = st[key] ?? 0
+        const j = await hostawayGet(t, `${path}${path.includes('?') ? '&' : '?'}limit=100&offset=${off}`)
+        const rows: any[] = j.result ?? []
+        await handle(rows)
+        st[key] = off + rows.length
+        await save()
+        if (rows.length < 100) return true
+      }
+      return false
+    }
+
+    if (st.phase === 'reservations') {
+      const finished = await pull(`/reservations?departureStartDate=${addDays(today, -90)}`, 'resOffset', async (resv) => {
+        const rows = resv.map((r) => ({
+          id: Number(r.id), property_id: byHost.get(Number(r.listingMapId)) ?? null, listing_id: num(r.listingMapId),
+          channel_name: r.channelName ?? null, status: r.status ?? null,
+          guest_name: r.guestName ?? ([r.guestFirstName, r.guestLastName].filter(Boolean).join(' ') || null),
+          arrival_date: dateOnly(r.arrivalDate), departure_date: dateOnly(r.departureDate), nights: num(r.nights),
+          total_price: num(r.totalPrice), cleaning_fee: num(r.cleaningFee), channel_commission: num(r.channelCommissionAmount),
+          currency: r.currency ?? null, reserved_at: r.reservationDate ?? null, raw: r, synced_at: new Date().toISOString(),
+        })).filter((r) => r.id)
+        if (rows.length) await db.from('reservations').upsert(rows, { onConflict: 'id' })
+      })
+      st.counts.reservations = st.resOffset ?? 0
+      if (finished) { st.phase = 'cleaning'; await save() }
     }
 
     if (st.phase === 'cleaning') {
@@ -67,15 +82,16 @@ export default async function handler(req: Req, res: Res) {
       st.phase = 'reviews'; await save()
     }
 
-    if (st.phase === 'reviews' && left() > 30_000) {
-      const revs = await hostawayAll(t, '/reviews')
-      const rv = revs.map((r) => ({
-        id: Number(r.id), property_id: byHost.get(Number(r.listingMapId)) ?? null, listing_id: num(r.listingMapId),
-        channel_name: r.channelName ?? null, rating: num(r.rating), reviewed_at: r.submittedAt ?? r.insertedOn ?? null, raw: r, synced_at: new Date().toISOString(),
-      })).filter((r) => r.id)
-      for (let i = 0; i < rv.length; i += 200) await db.from('reviews').upsert(rv.slice(i, i + 200), { onConflict: 'id' })
-      st.counts.reviews = rv.length
-      st.phase = 'calendar'; await save()
+    if (st.phase === 'reviews') {
+      const finished = await pull('/reviews', 'revOffset', async (revs) => {
+        const rv = revs.map((r) => ({
+          id: Number(r.id), property_id: byHost.get(Number(r.listingMapId)) ?? null, listing_id: num(r.listingMapId),
+          channel_name: r.channelName ?? null, rating: num(r.rating), reviewed_at: r.submittedAt ?? r.insertedOn ?? null, raw: r, synced_at: new Date().toISOString(),
+        })).filter((r) => r.id)
+        if (rv.length) await db.from('reviews').upsert(rv, { onConflict: 'id' })
+      })
+      st.counts.reviews = st.revOffset ?? 0
+      if (finished) { st.phase = 'calendar'; await save() }
     }
 
     if (st.phase === 'calendar') {
@@ -103,7 +119,7 @@ export default async function handler(req: Req, res: Res) {
       await save({ finished_at: new Date().toISOString(), ok: true })
       return res.status(200).json({ done: true, summary: st.counts })
     }
-    return res.status(200).json({ done: false, phase: st.phase, calOffset: st.calOffset, total: props?.length ?? 0 })
+    return res.status(200).json({ done: false, phase: st.phase, calOffset: st.calOffset, resOffset: st.resOffset ?? 0, revOffset: st.revOffset ?? 0, total: props?.length ?? 0 })
   } catch (e) {
     const msg = (e as Error).message
     await save({ error: msg })      // 不标记结束，下次调用会从当前阶段重试

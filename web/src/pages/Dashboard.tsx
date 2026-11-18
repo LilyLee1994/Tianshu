@@ -19,12 +19,18 @@ export default function Dashboard() {
   useEffect(() => { loadRun() }, [])
   const syncNow = async () => {
     setSyncing(true)
-    for (let i = 0; i < 25; i++) {
+    let fails = 0
+    for (let i = 0; i < 40; i++) {
       setSyncMsg(`正在同步…（第 ${i + 1} 轮，每轮最长约 1 分钟，请不要关页面）`)
-      const [r, e] = await callApi<{ done: boolean; phase?: string; calOffset?: number; total?: number; summary?: Record<string, unknown> }>('cron-hostaway', {})
-      if (e || !r) { setSyncMsg(`同步失败：${e}。可以稍后再点一次，会接着上次的进度做。`); break }
+      const [r, e] = await callApi<{ done: boolean; phase?: string; calOffset?: number; resOffset?: number; revOffset?: number; total?: number; summary?: Record<string, unknown> }>('cron-hostaway', {})
+      if (e || !r) {
+        // 超时之类的临时错误：进度已经存了，自动接着再来，连续失败 4 次才放弃
+        if (++fails >= 4) { setSyncMsg(`同步失败：${e}。可以稍后再点一次，会接着上次的进度做。`); break }
+        setSyncMsg(`这一轮出错（${e}），自动重试第 ${fails} 次…`); continue
+      }
+      fails = 0
       if (r.done) { setSyncMsg(`同步完成：${JSON.stringify(r.summary)}`); break }
-      const names: Record<string, string> = { reservations: '订单', cleaning: '自动派清洁', reviews: '评价', calendar: `日历价格 ${r.calOffset}/${r.total}` }
+      const names: Record<string, string> = { reservations: `订单（已拉 ${r.resOffset} 条）`, cleaning: '自动派清洁', reviews: `评价（已拉 ${r.revOffset} 条）`, calendar: `日历价格 ${r.calOffset}/${r.total}` }
       setSyncMsg(`正在同步：${names[r.phase ?? ''] ?? r.phase}…`)
     }
     setSyncing(false)

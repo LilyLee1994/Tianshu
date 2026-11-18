@@ -19,7 +19,12 @@ export async function hostawayGet(t: string, path: string, retries = 3): Promise
   const wait = 700 - (Date.now() - last)
   if (wait > 0) await new Promise((r) => setTimeout(r, wait))
   last = Date.now()
-  const r = await fetch(`${API}${path}`, { headers: { Authorization: `Bearer ${t}` } })
+  const ctl = new AbortController()
+  const timer = setTimeout(() => ctl.abort(), 12000)
+  let r: Response
+  try { r = await fetch(`${API}${path}`, { headers: { Authorization: `Bearer ${t}` }, signal: ctl.signal }) }
+  catch { throw new Error(`Hostaway ${path.split('?')[0]} 超时`) }
+  finally { clearTimeout(timer) }
   if (r.status === 429 && retries > 0) { await new Promise((x) => setTimeout(x, 5000)); return hostawayGet(t, path, retries - 1) }
   if (!r.ok) throw new Error(`Hostaway ${path.split('?')[0]} 失败（${r.status}）`)
   return r.json()
