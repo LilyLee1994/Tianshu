@@ -20,8 +20,9 @@ export default function Dashboard() {
   const syncNow = async () => {
     setSyncing(true)
     let fails = 0
+    let last = ''
     for (let i = 0; i < 40; i++) {
-      setSyncMsg(`正在同步…（第 ${i + 1} 轮，每轮最长约 1 分钟，请不要关页面）`)
+      setSyncMsg(`第 ${i + 1} 轮进行中（每轮约 40 秒，请不要关页面）。${last}`)
       const [r, e] = await callApi<{ done: boolean; phase?: string; calOffset?: number; resOffset?: number; revOffset?: number; total?: number; summary?: Record<string, unknown> }>('cron-hostaway', {})
       if (e || !r) {
         // 超时之类的临时错误：进度已经存了，自动接着再来，连续失败 4 次才放弃
@@ -31,7 +32,8 @@ export default function Dashboard() {
       fails = 0
       if (r.done) { setSyncMsg(`同步完成：${JSON.stringify(r.summary)}`); break }
       const names: Record<string, string> = { reservations: `订单（已拉 ${r.resOffset} 条）`, cleaning: '自动派清洁', reviews: `评价（已拉 ${r.revOffset} 条）`, calendar: `日历价格 ${r.calOffset}/${r.total}` }
-      setSyncMsg(`正在同步：${names[r.phase ?? ''] ?? r.phase}…`)
+      last = `上一轮结束时：${names[r.phase ?? ''] ?? r.phase}`
+      setSyncMsg(`第 ${i + 1} 轮完成。${last}`)
     }
     setSyncing(false)
     loadRun()
