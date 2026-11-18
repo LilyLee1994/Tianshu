@@ -30,7 +30,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     Promise.all([
-      supabase.from('work_orders').select('status, type, description, property:properties(name)').neq('status', '已完成'),
+      supabase.from('work_orders').select('status, type, description, property:properties(name)').not('status', 'in', '(已完成,已取消)'),
       supabase.from('properties').select('name, property_contracts(*)').eq('legacy', false),
     ]).then(([o, p]) => {
       const t: Todo[] = []

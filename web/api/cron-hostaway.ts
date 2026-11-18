@@ -40,6 +40,40 @@ export default async function handler(req: Req, res: Res) {
     for (let i = 0; i < rows.length; i += 200) await db.from('reservations').upsert(rows.slice(i, i + 200), { onConflict: 'id' })
     summary.reservations = rows.length
 
+    // 1.5) 自动派清洁：今天和明天退房的订单，各生成一张清洁单，派给房源的默认清洁公司
+    const active = (st: string | null) => !/cancel|inquiry|declin|expire|denied/i.test(st ?? '')
+    const { data: cleanProps } = await db.from('properties').select('id, cleaner_id')
+    const cleanerOf = new Map((cleanProps ?? []).map((p) => [p.id as number, p.cleaner_id as string | null]))
+    const { data: near } = await db.from('reservations')
+      .select('id, property_id, arrival_date, departure_date, status, guest_name')
+      .not('property_id', 'is', null).gte('arrival_date', today).lte('arrival_date', addDays(today, 4))
+    const arrivals = (near ?? []).filter((r) => active(r.status))
+    const { data: outs } = await db.from('reservations')
+      .select('id, property_id, arrival_date, departure_date, status, guest_name')
+      .not('property_id', 'is', null).gte('departure_date', today).lte('departure_date', addDays(today, 1))
+    const { data: have } = await db.from('work_orders').select('reservation_id').eq('type', '清洁').not('reservation_id', 'is', null)
+    const haveSet = new Set((have ?? []).map((h) => Number(h.reservation_id)))
+    const newOrders = (outs ?? []).filter((r) => active(r.status) && !haveSet.has(Number(r.id))).map((r) => {
+      const dep = String(r.departure_date)
+      const urgent = arrivals.some((a) => a.property_id === r.property_id && a.id !== r.id && String(a.arrival_date) >= dep && String(a.arrival_date) <= addDays(dep, 1))
+      const cleaner = cleanerOf.get(r.property_id as number) ?? null
+      return {
+        property_id: r.property_id, type: '清洁', description: `退房清洁${r.guest_name ? `（${r.guest_name}）` : ''}`,
+        planned_date: dep, urgent, reservation_id: r.id, assigned_to: cleaner, status: cleaner ? '已派单' : '待派单',
+      }
+    })
+    if (newOrders.length) await db.from('work_orders').insert(newOrders)
+    // 订单后来取消了、清洁单还没做的，标记为已取消
+    const { data: pend } = await db.from('work_orders').select('id, reservation_id').eq('type', '清洁').not('reservation_id', 'is', null).in('status', ['待派单', '已派单'])
+    let cancelledOrders = 0
+    if (pend?.length) {
+      const { data: rs } = await db.from('reservations').select('id, status').in('id', pend.map((o) => o.reservation_id))
+      const dead = new Set((rs ?? []).filter((r) => !active(r.status)).map((r) => Number(r.id)))
+      const ids = pend.filter((o) => dead.has(Number(o.reservation_id))).map((o) => o.id)
+      if (ids.length) { await db.from('work_orders').update({ status: '已取消' }).in('id', ids); cancelledOrders = ids.length }
+    }
+    summary.autoCleaning = { created: newOrders.length, noCleaner: newOrders.filter((o) => !o.assigned_to).length, cancelled: cancelledOrders }
+
     // 2) 评价
     const revs = await hostawayAll(t, '/reviews')
     const rv = revs.map((r) => ({
