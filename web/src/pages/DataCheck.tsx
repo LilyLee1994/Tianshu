@@ -41,8 +41,18 @@ export default function DataCheck() {
       .then(({ data, count }) => setRes({ n: count, rows: (data ?? []).map((r: any) => ({ ...r, property: r.property?.name })) }))
     supabase.from('reviews').select('id, channel_name, rating, reviewed_at, property:properties(name)', { count: 'exact' }).order('reviewed_at', { ascending: false }).limit(8)
       .then(({ data, count }) => setRev({ n: count, rows: (data ?? []).map((r: any) => ({ ...r, property: r.property?.name })) }))
-    supabase.from('calendar_snapshots').select('date, snapshot_date, price, status, is_available, min_stay, property:properties(name)', { count: 'exact' }).order('snapshot_date', { ascending: false }).order('date').limit(8)
-      .then(({ data, count, error }) => { if (error) setCalErr(error.message); setCal({ n: count, rows: (data ?? []).map((r: any) => ({ ...r, property: r.property?.name })) }) })
+    // 日历表很大：先取最新快照日，再只看那一天，避免全表排序超时
+    ;(async () => {
+      const { data: last, error: e1 } = await supabase.from('calendar_snapshots').select('snapshot_date').order('snapshot_date', { ascending: false }).limit(1)
+      if (e1) { setCalErr(e1.message); return }
+      const snap = last?.[0]?.snapshot_date
+      if (!snap) { setCal({ n: 0, rows: [] }); return }
+      const { data, count, error } = await supabase.from('calendar_snapshots')
+        .select('date, snapshot_date, price, status, is_available, min_stay, property:properties(name)', { count: 'estimated' })
+        .eq('snapshot_date', snap).order('property_id').order('date').limit(8)
+      if (error) setCalErr(error.message)
+      setCal({ n: count, rows: (data ?? []).map((r: any) => ({ ...r, property: r.property?.name })) })
+    })()
   }, [])
 
   return (
