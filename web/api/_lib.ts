@@ -9,6 +9,7 @@ const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 
 export function adminClient(): SupabaseClient {
   if (!KEY) throw new Error('服务器没有配置 SUPABASE_SERVICE_ROLE_KEY')
+  if (KEY.startsWith('sb_publishable_')) throw new Error('SUPABASE_SERVICE_ROLE_KEY 填成了 publishable key，请换成 Secret key（sb_secret_ 开头）')
   return createClient(URL, KEY, { auth: { persistSession: false, autoRefreshToken: false } })
 }
 
@@ -31,7 +32,8 @@ export async function authenticate(req: Req, res: Res, db: SupabaseClient): Prom
   if (!token) { res.status(401).json({ error: '请先登录。' }); return null }
   const { data: u, error } = await db.auth.getUser(token)
   if (error || !u.user) { res.status(401).json({ error: '登录已过期，请重新登录。' }); return null }
-  const { data: p } = await db.from('profiles').select('id, role, active').eq('id', u.user.id).maybeSingle()
+  const { data: p, error: pe } = await db.from('profiles').select('id, role, active').eq('id', u.user.id).maybeSingle()
+  if (pe) { res.status(500).json({ error: `服务器读不到账号表：${pe.message}。请检查 SUPABASE_SERVICE_ROLE_KEY 是不是 Secret key。` }); return null }
   if (!p || !p.active) { res.status(403).json({ error: '账号已停用。' }); return null }
   return { id: p.id, role: p.role }
 }
