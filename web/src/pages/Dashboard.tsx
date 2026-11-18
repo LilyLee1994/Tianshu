@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { supabase as _s } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
-import { callApi } from '../lib/api'
+import { startSync, useSync } from '../lib/syncStore'
 import { statusOf } from './Properties'
 import { daysTo } from './Contracts'
 
@@ -13,31 +13,10 @@ export default function Dashboard() {
   const nav = useNavigate()
   const { profile } = useAuth()
   const [run, setRun] = useState<{ started_at: string; ok: boolean | null; error: string | null; summary: Record<string, unknown> | null } | null>(null)
-  const [syncing, setSyncing] = useState(false)
-  const [syncMsg, setSyncMsg] = useState('')
+  const sync = useSync()
   const loadRun = () => _s.from('sync_runs').select('started_at, ok, error, summary').order('started_at', { ascending: false }).limit(1).then(({ data }) => setRun(data?.[0] ?? null))
   useEffect(() => { loadRun() }, [])
-  const syncNow = async () => {
-    setSyncing(true)
-    let fails = 0
-    let last = ''
-    for (let i = 0; i < 40; i++) {
-      setSyncMsg(`第 ${i + 1} 轮进行中（每轮约 40 秒，请不要关页面）。${last}`)
-      const [r, e] = await callApi<{ done: boolean; phase?: string; calOffset?: number; resOffset?: number; revOffset?: number; total?: number; summary?: Record<string, unknown> }>('cron-hostaway', {})
-      if (e || !r) {
-        // 超时之类的临时错误：进度已经存了，自动接着再来，连续失败 4 次才放弃
-        if (++fails >= 4) { setSyncMsg(`同步失败：${e}。可以稍后再点一次，会接着上次的进度做。`); break }
-        setSyncMsg(`这一轮出错（${e}），自动重试第 ${fails} 次…`); continue
-      }
-      fails = 0
-      if (r.done) { setSyncMsg(`同步完成：${JSON.stringify(r.summary)}`); break }
-      const names: Record<string, string> = { reservations: `订单（已拉 ${r.resOffset} 条）`, cleaning: '自动派清洁', reviews: `评价（已拉 ${r.revOffset} 条）`, calendar: `日历价格 ${r.calOffset}/${r.total}` }
-      last = `上一轮结束时：${names[r.phase ?? ''] ?? r.phase}`
-      setSyncMsg(`第 ${i + 1} 轮完成。${last}`)
-    }
-    setSyncing(false)
-    loadRun()
-  }
+  const syncNow = () => startSync(loadRun)
   const [todos, setTodos] = useState<Todo[]>([])
   const [stats, setStats] = useState({ pending: 0, doing: 0, incomplete: 0 })
   const [loading, setLoading] = useState(true)
@@ -79,9 +58,9 @@ export default function Dashboard() {
       </div>
       {profile?.role === 'admin' && (
         <div className="card" style={{ marginBottom: 24 }}>
-          <div className="title-row"><h3 style={{ margin: 0 }}>Hostaway 每日数据同步</h3><button className="ghost" disabled={syncing} onClick={syncNow}>{syncing ? '同步中…' : '立即同步一次'}</button></div>
+          <div className="title-row"><h3 style={{ margin: 0 }}>Hostaway 每日数据同步</h3><button className="ghost" disabled={sync.running} onClick={syncNow}>{sync.running ? '同步中…' : '立即同步一次'}</button></div>
           <p className="muted small" style={{ margin: 0 }}>{run ? `上次：${new Date(run.started_at).toLocaleString('zh-CN')} · ${run.ok === null ? '进行中或中断' : run.ok ? '成功' : `失败：${run.error}`}` : '还没有同步记录。每天悉尼凌晨自动跑一次。'}</p>
-          {syncMsg && <p className="small" style={{ margin: '8px 0 0' }}>{syncMsg}</p>}
+          {sync.msg && <p className="small" style={{ margin: '8px 0 0' }}>{sync.msg}</p>}
         </div>
       )}
       <h2>今天要处理的</h2>
