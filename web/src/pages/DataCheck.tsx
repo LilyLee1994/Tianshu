@@ -23,6 +23,7 @@ export default function DataCheck() {
   const [res, setRes] = useState<{ n: number | null; rows: Row[] }>({ n: null, rows: [] })
   const [rev, setRev] = useState<{ n: number | null; rows: Row[] }>({ n: null, rows: [] })
   const [cal, setCal] = useState<{ n: number | null; rows: Row[] }>({ n: null, rows: [] })
+  const [calErr, setCalErr] = useState('')
   const [raw, setRaw] = useState<{ review: string; reservation: string }>({ review: '', reservation: '' })
 
   useEffect(() => {
@@ -41,7 +42,7 @@ export default function DataCheck() {
     supabase.from('reviews').select('id, channel_name, rating, reviewed_at, property:properties(name)', { count: 'exact' }).order('reviewed_at', { ascending: false }).limit(8)
       .then(({ data, count }) => setRev({ n: count, rows: (data ?? []).map((r: any) => ({ ...r, property: r.property?.name })) }))
     supabase.from('calendar_snapshots').select('date, snapshot_date, price, status, is_available, min_stay, property:properties(name)', { count: 'exact' }).order('snapshot_date', { ascending: false }).order('date').limit(8)
-      .then(({ data, count }) => setCal({ n: count, rows: (data ?? []).map((r: any) => ({ ...r, property: r.property?.name })) }))
+      .then(({ data, count, error }) => { if (error) setCalErr(error.message); setCal({ n: count, rows: (data ?? []).map((r: any) => ({ ...r, property: r.property?.name })) }) })
   }, [])
 
   return (
@@ -56,6 +57,7 @@ export default function DataCheck() {
         <b>评价</b><pre className="raw">{raw.review || '…'}</pre>
         <b>订单</b><pre className="raw">{raw.reservation || '…'}</pre>
       </section>
+      {calErr && <p className="error">日历价格读取出错：{calErr}</p>}
       <Block title="日历价格快照" count={cal.n} rows={cal.rows} cols={[['property', '房源'], ['date', '日期'], ['price', '价格'], ['status', '状态'], ['is_available', '可订'], ['min_stay', '最少晚数'], ['snapshot_date', '快照日']]} />
     </div>
   )

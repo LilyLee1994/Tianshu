@@ -124,8 +124,12 @@ export default async function handler(req: Req, res: Res) {
             price: num(d.price), status: d.status ?? null, is_available: typeof d.isAvailable === 'boolean' ? d.isAvailable : d.isAvailable === 1,
             min_stay: num(d.minimumStay),
           })).filter((d) => d.date)
-          for (let i = 0; i < days.length; i += 500) await db.from('calendar_snapshots').upsert(days.slice(i, i + 500), { onConflict: 'property_id,date,snapshot_date' })
-          st.counts.calendarRows = (Number(st.counts.calendarRows) || 0) + days.length
+          const uniq = [...new Map(days.map((d) => [d.date, d])).values()]
+          for (let i = 0; i < uniq.length; i += 500) {
+            const { error } = await db.from('calendar_snapshots').upsert(uniq.slice(i, i + 500), { onConflict: 'property_id,date,snapshot_date' })
+            if (error) throw new Error(`写入日历失败：${error.message}`)
+          }
+          st.counts.calendarRows = (Number(st.counts.calendarRows) || 0) + uniq.length
         } catch (e) { if (st.failed.length < 5) st.failed.push(`${p.hostaway_id}：${(e as Error).message}`) }
         st.calOffset++
         if (st.calOffset % 5 === 0) await save()
