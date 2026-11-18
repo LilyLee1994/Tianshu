@@ -11,7 +11,7 @@ const addDays = (d: string, n: number) => new Date(new Date(d).getTime() + n * 8
 const active = (st: string | null) => !/cancel|inquiry|declin|expire|denied/i.test(st ?? '')
 
 const channelOf = (cid: number, name?: unknown) =>
-  cid === 2000 ? 'Airbnb' : cid === 2005 ? 'Booking.com' : cid === 2002 ? 'Vrbo' : name ? String(name) : cid ? `渠道${cid}` : null
+  cid === 2018 ? 'Airbnb' : cid === 2005 ? 'Booking.com' : name ? String(name) : cid ? `渠道${cid}` : null
 
 type Phase = 'reservations' | 'cleaning' | 'reviews' | 'calendar' | 'done'
 interface State { phase: Phase; calOffset: number; resOffset?: number; revOffset?: number; lastFirst?: Record<string, number>; counts: Record<string, unknown>; failed: string[] }
@@ -40,7 +40,14 @@ export default async function handler(req: Req, res: Res) {
     run = ins.data
   }
   if (!run) return res.status(500).json({ error: '无法创建同步记录。' })
-  if (run.ok === true) return res.status(200).json({ done: true, summary: (run.summary as State).counts })
+  if (run.ok === true) {
+    // 定时任务不重复跑；管理员手动点时，只把日历这一段重跑一遍
+    if (isCron) return res.status(200).json({ done: true, summary: (run.summary as State).counts })
+    const prev = run.summary as State
+    const redo: State = { ...prev, phase: 'calendar', calOffset: 0, failed: [], counts: { ...prev.counts, calendarRows: 0 } }
+    await db.from('sync_runs').update({ summary: redo, ok: null, finished_at: null }).eq('id', run.id)
+    run = { ...run, ok: null, summary: redo }
+  }
   const st = run.summary as State
   const save = (patch: Record<string, unknown> = {}) =>
     db.from('sync_runs').update({ summary: st, ...patch }).eq('id', run!.id)
