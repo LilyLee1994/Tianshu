@@ -4,19 +4,27 @@ import Layout, { NAV } from './layout/Layout'
 import Login from './pages/Login'
 import Properties from './pages/Properties'
 import Placeholder from './pages/Placeholder'
+import Accounts from './pages/Accounts'
+import Orders from './pages/Orders'
+import Fees from './pages/Fees'
+import Contracts from './pages/Contracts'
+import Dashboard from './pages/Dashboard'
+import WorkerApp from './pages/WorkerApp'
+
+const PAGES: Record<string, React.ReactElement> = {
+  '/': <Dashboard />, '/properties': <Properties />, '/orders': <Orders />, '/fees': <Fees />, '/contracts': <Contracts />, '/accounts': <Accounts />,
+}
 
 function Gate() {
   const { loading, profile } = useAuth()
   if (loading) return <p className="muted pad">加载中…</p>
   if (!profile) return <Login />
-  if (profile.role === 'repairman' || profile.role === 'cleaner') {
-    return <div className="login-wrap"><div className="login-card"><h1>天枢</h1><p>维修师傅和清洁公司请用发给你的手机链接，不用登录这里。</p></div></div>
-  }
+  if (profile.role === 'repairman' || profile.role === 'cleaner') return <WorkerApp />
   return (
     <Routes>
       <Route element={<Layout />}>
         {NAV.filter((n) => n.roles.includes(profile.role)).map((n) => (
-          <Route key={n.to} path={n.to} element={n.to === '/properties' ? <Properties /> : <Placeholder title={n.label} />} />
+          <Route key={n.to} path={n.to} element={PAGES[n.to] ?? <Placeholder title={n.label} />} />
         ))}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

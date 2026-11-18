@@ -23,3 +23,9 @@ cd web && npm run build   # 产物在 web/dist
 ## 密钥
 `web/.env` 里只放公开的 URL 和 publishable key，可以提交。
 **service_role / secret key 绝不提交**，放服务器环境变量。
+
+## 部署（Vercel）
+- Root Directory 选 `web`
+- 环境变量（Settings → Environment Variables）：
+  - `SUPABASE_SERVICE_ROLE_KEY`：Supabase → Project Settings → API Keys 里的 secret / service_role key（**只放这里，不要提交**）
+- `web/api/` 下的文件是服务端函数（创建账号、重置密码、师傅提交等）
