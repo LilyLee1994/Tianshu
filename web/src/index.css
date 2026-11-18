@@ -74,3 +74,6 @@ label.check input { min-height: 0; width: 18px; height: 18px; }
 .file input { display: none; }
 .pics { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; max-height: 60vh; overflow: auto; }
 .pics img { width: 100%; border-radius: 8px; }
+.plats { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
+.plat { flex: 1 1 220px; border: 1px solid #e1e5ea; border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
+.plat a { color: #0f6b66; }

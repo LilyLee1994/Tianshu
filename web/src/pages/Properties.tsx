@@ -14,6 +14,7 @@ interface Contract {
 }
 interface Row {
   id: number; name: string; address: string | null; region: string | null; assistant_id: string | null
+  airbnb_url: string | null; booking_url: string | null
   assistant: { name: string } | null
   property_details: Details | null
   property_contracts: Contract | null
@@ -47,11 +48,12 @@ export default function Properties() {
   const [msg, setMsg] = useState('')
   const [syncing, setSyncing] = useState(false)
   const [syncErr, setSyncErr] = useState('')
+  const [syncKeys, setSyncKeys] = useState('')
 
   const load = useCallback(async () => {
     const [p, a] = await Promise.all([
       supabase.from('properties')
-        .select('id, name, address, region, assistant_id, assistant:profiles!assistant_id(name), property_details(*), property_contracts(*)')
+        .select('id, name, address, region, assistant_id, airbnb_url, booking_url, assistant:profiles!assistant_id(name), property_details(*), property_contracts(*)')
         .order('name'),
       supabase.from('profiles').select('id, name').eq('role', 'assistant').eq('active', true).order('name'),
     ])
@@ -80,6 +82,7 @@ export default function Properties() {
     setSyncing(false)
     if (e || !r) { setSyncErr(e ?? '同步失败'); return }
     setMsg(`Hostaway 同步完成：共 ${r.total} 个，新增 ${r.created}，更新 ${r.updated}${r.skipped.length ? `，跳过 ${r.skipped.length}（${r.skipped.slice(0, 3).join('；')}）` : ''}。`)
+    setSyncKeys(r.sampleKeys.join('、'))
     await load()
   }
 
@@ -93,6 +96,7 @@ export default function Properties() {
       </div>
       {msg && <div className="ok">{msg}</div>}
       {syncErr && <div className="err-box">{syncErr}</div>}
+      {syncKeys && <details className="muted small" style={{ marginBottom: 12 }}><summary>Hostaway 返回的字段（排查用，可以复制发给开发）</summary><div style={{ wordBreak: 'break-all' }}>{syncKeys}</div></details>}
       {isAssistant && (
         <div className="pills">
           <button className={scope === 'mine' ? 'pill on' : 'pill'} onClick={() => { setScope('mine'); setEditing(false) }}>自己的房源</button>
@@ -164,6 +168,10 @@ function Detail({ row: r, canEdit, onEdit }: { row: Row; canEdit: boolean; onEdi
         <dd>水 {dash(c?.water)} · 电 {dash(c?.power)} · 燃气 {dash(c?.gas)} · 网络 {dash(c?.internet)}</dd>
         <dt>合同</dt><dd>到期 {dash(c?.end_date)} · 代缴费用是否扣回 {dash(c?.recharge_back)}</dd>
       </dl>
+      <div className="plats">
+        <div className="plat"><b>Airbnb</b>{r.airbnb_url ? <a href={r.airbnb_url.startsWith('http') ? r.airbnb_url : `https://${r.airbnb_url}`} target="_blank" rel="noreferrer">打开房源页</a> : <span className="muted">还没填链接</span>}<span className="muted small">评分和上线状态：等每日同步接入</span></div>
+        <div className="plat"><b>Booking</b>{r.booking_url ? <a href={r.booking_url.startsWith('http') ? r.booking_url : `https://${r.booking_url}`} target="_blank" rel="noreferrer">打开房源页</a> : <span className="muted">还没填链接</span>}<span className="muted small">评分和上线状态：等每日同步接入</span></div>
+      </div>
       {st === '待登记合同' && <p className="warn">水电燃气网络和合同到期日填完整后，房源才算“运营中”。</p>}
     </section>
   )
@@ -171,7 +179,7 @@ function Detail({ row: r, canEdit, onEdit }: { row: Row; canEdit: boolean; onEdi
 
 function EditForm({ row, isAdmin, assistants, onCancel, onSaved }: { row: Row; isAdmin: boolean; assistants: Assistant[]; onCancel: () => void; onSaved: () => void }) {
   const d = row.property_details, c = row.property_contracts
-  const [p, setP] = useState({ name: row.name, address: row.address ?? '', region: row.region ?? '', assistant_id: row.assistant_id ?? '' })
+  const [p, setP] = useState({ name: row.name, address: row.address ?? '', region: row.region ?? '', assistant_id: row.assistant_id ?? '', airbnb_url: row.airbnb_url ?? '', booking_url: row.booking_url ?? '' })
   const [dt, setDt] = useState({
     bedrooms: d?.bedrooms?.toString() ?? '', bathrooms: d?.bathrooms?.toString() ?? '', max_guests: d?.max_guests?.toString() ?? '',
     beds: d?.beds ?? '', appliances: (d?.appliances ?? []).join('，'),
@@ -200,7 +208,7 @@ function EditForm({ row, isAdmin, assistants, onCancel, onSaved }: { row: Row; i
       supabase.from('property_contracts').update({ ...ct, end_date: ct.end_date || null }).eq('property_id', row.id).select('property_id'),
     ]
     if (isAdmin) jobs.push(supabase.from('properties').update({
-      name: p.name.trim(), address: txt(p.address), region: txt(p.region), assistant_id: p.assistant_id || null,
+      name: p.name.trim(), address: txt(p.address), region: txt(p.region), assistant_id: p.assistant_id || null, airbnb_url: txt(p.airbnb_url), booking_url: txt(p.booking_url),
     }).eq('id', row.id).select('id'))
     const res = await Promise.all(jobs)
     setBusy(false)
@@ -224,6 +232,8 @@ function EditForm({ row, isAdmin, assistants, onCancel, onSaved }: { row: Row; i
           {f('房源名称', p.name, (v) => setP({ ...p, name: v }))}
           {f('地址', p.address, (v) => setP({ ...p, address: v }))}
           {f('区域', p.region, (v) => setP({ ...p, region: v }))}
+          {f('Airbnb 房源链接', p.airbnb_url, (v) => setP({ ...p, airbnb_url: v }))}
+          {f('Booking 房源链接', p.booking_url, (v) => setP({ ...p, booking_url: v }))}
           <label>主责助理<select value={p.assistant_id} onChange={(e) => setP({ ...p, assistant_id: e.target.value })}>
             <option value="">未分配</option>{assistants.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select></label>
