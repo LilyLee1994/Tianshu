@@ -88,6 +88,12 @@ export default async function handler(req: Req, res: Res) {
     }
 
     if (st.phase === 'reviews') {
+      // 评价历史很多（几万条），平时跳过，只在评价表几乎为空或每周一重新拉
+      const { count: nRev } = await db.from('reviews').select('id', { count: 'exact', head: true })
+      const monday = new Date(today).getUTCDay() === 1
+      if ((nRev ?? 0) > 100 && !monday && !(st.revOffset && st.revOffset > 0)) { st.counts.reviews = `跳过（已有 ${nRev} 条，每周一刷新）`; st.phase = 'calendar'; await save() }
+    }
+    if (st.phase === 'reviews') {
       const finished = await pull('/reviews', 'revOffset', async (revs) => {
         const rv = revs.map((r) => ({
           id: Number(r.id), property_id: byHost.get(Number(r.listingMapId)) ?? null, listing_id: num(r.listingMapId),
