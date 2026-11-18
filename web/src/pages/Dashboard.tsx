@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { supabase as _s } from '../lib/supabase'
+import { useAuth } from '../lib/auth'
+import { callApi } from '../lib/api'
 import { statusOf } from './Properties'
 import { daysTo } from './Contracts'
 
@@ -8,6 +11,19 @@ interface Todo { tag: string; text: string; to: string; cls: string }
 
 export default function Dashboard() {
   const nav = useNavigate()
+  const { profile } = useAuth()
+  const [run, setRun] = useState<{ started_at: string; ok: boolean | null; error: string | null; summary: Record<string, unknown> | null } | null>(null)
+  const [syncing, setSyncing] = useState(false)
+  const [syncMsg, setSyncMsg] = useState('')
+  const loadRun = () => _s.from('sync_runs').select('started_at, ok, error, summary').order('started_at', { ascending: false }).limit(1).then(({ data }) => setRun(data?.[0] ?? null))
+  useEffect(() => { loadRun() }, [])
+  const syncNow = async () => {
+    setSyncing(true); setSyncMsg('正在同步，最长约一两分钟，请不要关页面…')
+    const [r, e] = await callApi<{ summary: Record<string, unknown> }>('cron-hostaway', {})
+    setSyncing(false)
+    setSyncMsg(e ? `同步失败：${e}` : `同步完成：${JSON.stringify(r!.summary)}`)
+    loadRun()
+  }
   const [todos, setTodos] = useState<Todo[]>([])
   const [stats, setStats] = useState({ pending: 0, doing: 0, incomplete: 0 })
   const [loading, setLoading] = useState(true)
@@ -47,6 +63,13 @@ export default function Dashboard() {
         <div className="stat"><div className="n">{stats.doing}</div>进行中的工单</div>
         <div className="stat"><div className="n">{stats.incomplete}</div>待登记完整的合同</div>
       </div>
+      {profile?.role === 'admin' && (
+        <div className="card" style={{ marginBottom: 24 }}>
+          <div className="title-row"><h3 style={{ margin: 0 }}>Hostaway 每日数据同步</h3><button className="ghost" disabled={syncing} onClick={syncNow}>{syncing ? '同步中…' : '立即同步一次'}</button></div>
+          <p className="muted small" style={{ margin: 0 }}>{run ? `上次：${new Date(run.started_at).toLocaleString('zh-CN')} · ${run.ok === null ? '进行中或中断' : run.ok ? '成功' : `失败：${run.error}`}` : '还没有同步记录。每天悉尼凌晨自动跑一次。'}</p>
+          {syncMsg && <p className="small" style={{ margin: '8px 0 0' }}>{syncMsg}</p>}
+        </div>
+      )}
       <h2>今天要处理的</h2>
       <div className="todos">
         {todos.map((t, i) => <button key={i} className="todo" onClick={() => nav(t.to)}><span className={`chip ${t.cls}`}>{t.tag}</span>{t.text}</button>)}
