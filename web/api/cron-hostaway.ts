@@ -11,7 +11,7 @@ const addDays = (d: string, n: number) => new Date(new Date(d).getTime() + n * 8
 const active = (st: string | null) => !/cancel|inquiry|declin|expire|denied/i.test(st ?? '')
 
 type Phase = 'reservations' | 'cleaning' | 'reviews' | 'calendar' | 'done'
-interface State { phase: Phase; calOffset: number; resOffset?: number; revOffset?: number; counts: Record<string, unknown>; failed: string[] }
+interface State { phase: Phase; calOffset: number; resOffset?: number; revOffset?: number; lastFirst?: Record<string, number>; counts: Record<string, unknown>; failed: string[] }
 
 export default async function handler(req: Req, res: Res) {
   const db = adminClient()
@@ -53,10 +53,15 @@ export default async function handler(req: Req, res: Res) {
         const off = st[key] ?? 0
         const j = await hostawayGet(t, `${path}${path.includes('?') ? '&' : '?'}limit=100&offset=${off}`)
         const rows: any[] = j.result ?? []
+        // 保护：如果这一页和上一页第一条一样（Hostaway 没按偏移翻页），或已经拉了 6000 条，就当作拉完，避免永远循环
+        const first = Number(rows[0]?.id) || 0
+        st.lastFirst = st.lastFirst ?? {}
+        if (rows.length && first && st.lastFirst[key] === first) return true
+        if (rows.length) st.lastFirst[key] = first
         await handle(rows)
         st[key] = off + rows.length
         await save()
-        if (rows.length < 100) return true
+        if (rows.length < 100 || st[key]! >= 6000) return true
       }
       return false
     }
