@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { callApi } from '../lib/api'
+
+type Inv = { label: string; path: string; ok: boolean; error?: string; total?: number; fields?: { key: string; filled: number; sample: string }[]; links?: { where: string; n: number }[] }
 
 type Row = Record<string, unknown>
 const cell = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : String(v))
@@ -23,6 +26,15 @@ export default function DataCheck() {
   const [res, setRes] = useState<{ n: number | null; rows: Row[] }>({ n: null, rows: [] })
   const [rev, setRev] = useState<{ n: number | null; rows: Row[] }>({ n: null, rows: [] })
   const [cal, setCal] = useState<{ n: number | null; rows: Row[] }>({ n: null, rows: [] })
+  const [inv, setInv] = useState<Inv[] | null>(null)
+  const [invBusy, setInvBusy] = useState(false)
+  const [invErr, setInvErr] = useState('')
+  const runInv = async () => {
+    setInvBusy(true); setInvErr('')
+    const [r, e] = await callApi<{ resources: Inv[] }>('hostaway-inventory', {})
+    setInvBusy(false)
+    if (e) setInvErr(e); else setInv(r?.resources ?? [])
+  }
   const [calErr, setCalErr] = useState('')
   const [raw, setRaw] = useState<{ review: string; reservation: string }>({ review: '', reservation: '' })
 
@@ -59,6 +71,22 @@ export default function DataCheck() {
     <div>
       <h1>同步数据检查</h1>
       <p className="muted">看一眼 Hostaway 同步下来的数据对不对：哪一列是空的，说明字段还没对上，告诉开发就行。</p>
+      <section className="card" style={{ marginBottom: 16 }}>
+        <h3 style={{ marginTop: 0 }}>Hostaway 字段盘点</h3>
+        <p className="muted small">看你的 Hostaway 账号实际能拿到哪些内容、每个字段有多少条填了值。姓名、联系方式、密码、评价正文不会显示。</p>
+        <button className="btn primary" onClick={runInv} disabled={invBusy}>{invBusy ? '盘点中，约十几秒…' : '开始盘点'}</button>
+        {invErr && <p className="error">{invErr}</p>}
+        {inv?.map((x) => (
+          <details key={x.label} style={{ marginTop: 10 }}>
+            <summary><b>{x.label}</b> <span className="muted small">{x.ok ? `抽样 ${x.total} 条，${x.fields?.length} 个字段` : `读取失败：${x.error}`}</span></summary>
+            {x.links && <p className="small">平台链接：{x.links.length ? x.links.map((l) => `${l.where}（${l.n} 条）`).join('；') : '没有在这份数据里找到 Airbnb / Booking 链接'}</p>}
+            {x.ok && <div className="table-wrap" style={{ border: 0 }}><table style={{ minWidth: 520 }}>
+              <thead><tr><th>字段</th><th>有值</th><th>示例</th></tr></thead>
+              <tbody>{x.fields?.map((f) => <tr key={f.key}><td>{f.key}</td><td>{f.filled}/{x.total}</td><td>{f.sample || '—'}</td></tr>)}</tbody>
+            </table></div>}
+          </details>
+        ))}
+      </section>
       <Block title="订单" count={res.n} rows={res.rows} cols={[['property', '房源'], ['channel_name', '渠道'], ['status', '状态'], ['guest_name', '客人'], ['arrival_date', '入住'], ['departure_date', '退房'], ['nights', '晚数'], ['total_price', '总价'], ['cleaning_fee', '清洁费']]} />
       <Block title="评价" count={rev.n} rows={rev.rows} cols={[['property', '房源'], ['channel_name', '渠道'], ['rating', '评分'], ['reviewed_at', '时间']]} />
       <section className="card" style={{ marginBottom: 16 }}>
