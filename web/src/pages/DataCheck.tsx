@@ -35,6 +35,16 @@ export default function DataCheck() {
     setInvBusy(false)
     if (e) setInvErr(e); else setInv(r?.resources ?? [])
   }
+  const downloadInv = () => {
+    const lines = (inv ?? []).flatMap((x) => [
+      `## ${x.label}  (${x.path})  ${x.ok ? `抽样 ${x.total} 条，${x.fields?.length} 个字段` : `读取失败：${x.error}`}`,
+      ...(x.links ? [`平台链接：${x.links.length ? x.links.map((l) => `${l.where} ${l.n}条`).join('；') : '没有找到 Airbnb/Booking 链接'}`] : []),
+      ...(x.fields ?? []).map((f) => `${f.key}\t${f.filled}/${x.total}\t${f.sample}`),
+      '',
+    ])
+    const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' }))
+    const a = document.createElement('a'); a.href = url; a.download = 'hostaway-字段盘点.txt'; a.click(); URL.revokeObjectURL(url)
+  }
   const [calErr, setCalErr] = useState('')
   const [raw, setRaw] = useState<{ review: string; reservation: string }>({ review: '', reservation: '' })
 
@@ -75,6 +85,7 @@ export default function DataCheck() {
         <h3 style={{ marginTop: 0 }}>Hostaway 字段盘点</h3>
         <p className="muted small">看你的 Hostaway 账号实际能拿到哪些内容、每个字段有多少条填了值。姓名、联系方式、密码、评价正文不会显示。</p>
         <button className="btn primary" onClick={runInv} disabled={invBusy}>{invBusy ? '盘点中，约十几秒…' : '开始盘点'}</button>
+        {inv && <button className="ghost" style={{ marginLeft: 8 }} onClick={downloadInv}>下载结果（发给开发）</button>}
         {invErr && <p className="error">{invErr}</p>}
         {inv?.map((x) => (
           <details key={x.label} style={{ marginTop: 10 }}>
