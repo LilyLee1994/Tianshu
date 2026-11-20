@@ -147,6 +147,15 @@ export default function Properties() {
 }
 
 function Detail({ row: r, canEdit, onEdit }: { row: Row; canEdit: boolean; onEdit: () => void }) {
+  const [rt, setRt] = useState<Record<string, { n: number; avg: number }>>({})
+  useEffect(() => {
+    supabase.from('review_stats').select('channel_name, n, avg_rating').eq('property_id', r.id).then(({ data }) => {
+      const m: Record<string, { n: number; avg: number }> = {}
+      for (const x of data ?? []) m[x.channel_name ?? ''] = { n: x.n, avg: Number(x.avg_rating) }
+      setRt(m)
+    })
+  }, [r.id])
+  const ratingText = (ch: string, five: boolean) => rt[ch] ? `评分 ${five ? (rt[ch].avg / 2).toFixed(2) + ' 星' : rt[ch].avg.toFixed(2) + ' 分'}（${rt[ch].n} 条评价）` : '暂无评价'
   const d = r.property_details, c = r.property_contracts, st = statusOf(c, r.legacy)
   return (
     <section className="card">
@@ -173,8 +182,8 @@ function Detail({ row: r, canEdit, onEdit }: { row: Row; canEdit: boolean; onEdi
         </>}
       </dl>
       <div className="plats">
-        <div className="plat"><b>Airbnb</b>{r.airbnb_url ? <a href={r.airbnb_url.startsWith('http') ? r.airbnb_url : `https://${r.airbnb_url}`} target="_blank" rel="noreferrer">打开房源页</a> : <span className="muted">还没填链接</span>}<span className="muted small">评分和上线状态：等每日同步接入</span></div>
-        <div className="plat"><b>Booking</b>{r.booking_url ? <a href={r.booking_url.startsWith('http') ? r.booking_url : `https://${r.booking_url}`} target="_blank" rel="noreferrer">打开房源页</a> : <span className="muted">还没填链接</span>}<span className="muted small">评分和上线状态：等每日同步接入</span></div>
+        <div className="plat"><b>Airbnb</b>{r.airbnb_url ? <a href={r.airbnb_url.startsWith('http') ? r.airbnb_url : `https://${r.airbnb_url}`} target="_blank" rel="noreferrer">打开房源页</a> : <span className="muted">还没填链接</span>}<span className="muted small">{ratingText('Airbnb', true)}</span></div>
+        <div className="plat"><b>Booking</b>{r.booking_url ? <a href={r.booking_url.startsWith('http') ? r.booking_url : `https://${r.booking_url}`} target="_blank" rel="noreferrer">打开房源页</a> : <span className="muted">还没填链接</span>}<span className="muted small">{ratingText('Booking.com', false)}</span></div>
       </div>
       {st === '待登记合同' && <p className="warn">水电燃气网络和合同到期日填完整后，房源才算“运营中”。</p>}
     </section>

@@ -9,11 +9,12 @@ import Orders from './pages/Orders'
 import Fees from './pages/Fees'
 import Contracts from './pages/Contracts'
 import Dashboard from './pages/Dashboard'
+import Reviews from './pages/Reviews'
 import DataCheck from './pages/DataCheck'
 import WorkerApp from './pages/WorkerApp'
 
 const PAGES: Record<string, React.ReactElement> = {
-  '/': <Dashboard />, '/properties': <Properties />, '/orders': <Orders />, '/fees': <Fees />, '/contracts': <Contracts />, '/accounts': <Accounts />, '/data': <DataCheck />,
+  '/': <Dashboard />, '/properties': <Properties />, '/orders': <Orders />, '/fees': <Fees />, '/contracts': <Contracts />, '/accounts': <Accounts />, '/data': <DataCheck />, '/reviews': <Reviews />,
 }
 
 function Gate() {
