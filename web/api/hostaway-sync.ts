@@ -101,7 +101,7 @@ export default async function handler(req: Req, res: Res) {
       // 基本情况：Hostaway 有的就更新；锁盒密码、WiFi 只在库里还是空的时候填
       const { data: cur } = await db.from('property_details').select('lock_code, wifi_name, wifi_password').eq('property_id', pid).maybeSingle()
       const patch: Record<string, unknown> = {
-        bedrooms: int(l.bedroomsNumber), beds: int(l.bedsNumber), bathrooms: int(l.bathroomsNumber), max_guests: int(l.personCapacity),
+        bedrooms: int(l.bedroomsNumber), beds: l.bedsNumber != null ? String(int(l.bedsNumber)) : null, bathrooms: int(l.bathroomsNumber), max_guests: int(l.personCapacity),
       }
       if (!cur?.lock_code && str(l.doorSecurityCode)) patch.lock_code = str(l.doorSecurityCode)
       if (!cur?.wifi_name && str(l.wifiUsername)) patch.wifi_name = str(l.wifiUsername)
