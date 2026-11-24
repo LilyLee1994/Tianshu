@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx'
 import { supabase } from '../lib/supabase'
 import { callApi } from '../lib/api'
 
-interface Row { duty: string; property: string; login: string; pw: string; gpw: string; verify: string; other: string }
+interface Row { duty: string; property: string; login: string; pw: string; gpw: string; verify: string; other: string; old: string[] }
 interface Merged { login: string; pw: string; gpw: string; verify: string }
 
 const t = (v: unknown) => String(v ?? '').trim()
@@ -25,6 +25,18 @@ function parseAdmin(wb: XLSX.WorkBook): CompanyRow[] {
   return out
 }
 
+const MAIL = /[\w.+-]+@[\w-]+\.[\w.]+/g
+const OLD_KW = /老账号|老帐号|旧账号|旧帐号/
+// 老账号：“旧帐号”那一列里的邮箱，加上任何写着“老账号/旧帐号”的格子里的邮箱（只取邮箱，不带旁边的密码）
+function oldAccounts(cells: string[], login: string): string[] {
+  const out = new Set<string>()
+  const add = (x: string) => { for (const m of x.match(MAIL) ?? []) out.add(m.toLowerCase()) }
+  add(cells[0] ?? '')
+  for (const x of cells) if (OLD_KW.test(x)) add(x)
+  out.delete(login)
+  return [...out]
+}
+
 function parse(wb: XLSX.WorkBook): Row[] {
   const out: Row[] = []
   for (const sn of ['properties', 'Booking property']) {
@@ -37,7 +49,8 @@ function parse(wb: XLSX.WorkBook): Row[] {
       const col3 = t(c[3])
       const isMail = col3.includes('@')
       const other = [!isMail && col3 ? col3 : '', ...c.slice(7, 17).map(t)].filter(Boolean).join('  ｜  ')
-      out.push({ duty: t(c[0]), property, login: isMail ? col3.toLowerCase() : '', pw: t(c[4]), gpw: t(c[5]), verify: t(c[6]), other })
+      const login = isMail ? col3.toLowerCase() : ''
+      out.push({ duty: t(c[0]), property, login, pw: t(c[4]), gpw: t(c[5]), verify: t(c[6]), other, old: oldAccounts(c.slice(7, 17).map(t), login) })
     }
   }
   return out
@@ -128,8 +141,8 @@ export default function ImportAccounts() {
         const { error } = await supabase.from('properties').update(patch).eq('id', p.id)
         if (error) { setLog([`更新房源 ${r.property} 失败：${error.message}`]); setBusy(false); return }
       }
-      if (r.other) {
-        const { error } = await supabase.from('property_account_info').upsert({ property_id: p.id, raw: r.other }, { onConflict: 'property_id' })
+      if (r.other || r.old.length) {
+        const { error } = await supabase.from('property_account_info').upsert({ property_id: p.id, raw: r.other || null, old_accounts: r.old }, { onConflict: 'property_id' })
         if (error) { setLog([`保存 ${r.property} 的原表备注失败：${error.message}`]); setBusy(false); return }
       }
     }
@@ -160,7 +173,7 @@ export default function ImportAccounts() {
       <section className="card" style={{ marginBottom: 16 }}>
         <h3 style={{ marginTop: 0 }}>1. 选择文件</h3>
         <input type="file" accept=".xls,.xlsx" onChange={(e) => onFile(e.target.files?.[0])} />
-        {rows.length > 0 && <p>读到 <b>{rows.length}</b> 个房源，<b>{logins}</b> 个不同的 Airbnb 账号邮箱。</p>}
+        {rows.length > 0 && <p>读到 <b>{rows.length}</b> 个房源，<b>{logins}</b> 个不同的 Airbnb 账号邮箱，<b>{rows.filter((r) => r.old.length).length}</b> 个房源写了老账号。</p>}
       </section>
 
       {rows.length > 0 && (
