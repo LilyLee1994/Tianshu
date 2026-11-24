@@ -14,11 +14,12 @@ import Statements from './pages/Statements'
 import Claims from './pages/Claims'
 import Shifts from './pages/Shifts'
 import ImportAccounts from './pages/ImportAccounts'
+import Vault from './pages/Vault'
 import DataCheck from './pages/DataCheck'
 import WorkerApp from './pages/WorkerApp'
 
 const PAGES: Record<string, React.ReactElement> = {
-  '/': <Dashboard />, '/properties': <Properties />, '/orders': <Orders />, '/fees': <Fees />, '/contracts': <Contracts />, '/accounts': <Accounts />, '/data': <DataCheck />, '/reviews': <Reviews />, '/claims': <Claims />, '/shifts': <Shifts />, '/import': <ImportAccounts />, '/statements': <Statements />,
+  '/': <Dashboard />, '/properties': <Properties />, '/orders': <Orders />, '/fees': <Fees />, '/contracts': <Contracts />, '/accounts': <Accounts />, '/data': <DataCheck />, '/reviews': <Reviews />, '/claims': <Claims />, '/shifts': <Shifts />, '/import': <ImportAccounts />, '/vault': <Vault />, '/statements': <Statements />,
 }
 
 function Gate() {

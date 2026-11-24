@@ -16,6 +16,7 @@ export const NAV: { to: string; label: string; roles: Role[] }[] = [
   { to: '/statements', label: '房东结算（财务）', roles: ALL },
   { to: '/company', label: '公司款项', roles: ALL },
   { to: '/accounts', label: '账号与分配', roles: ['admin'] },
+  { to: '/vault', label: '账号库', roles: ['admin'] },
   { to: '/import', label: '导入旧表', roles: ['admin'] },
   { to: '/data', label: '同步数据检查', roles: ['admin'] },
 ]

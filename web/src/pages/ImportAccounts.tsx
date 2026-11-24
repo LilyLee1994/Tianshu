@@ -11,6 +11,20 @@ const t = (v: unknown) => String(v ?? '').trim()
 const pwOf = (acct: string) => { let p = acct, i = 1; while (p.length < 8) p += String(i++ % 10); return p }
 const titleCase = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
+interface CompanyRow { reference: string; account: string; password: string; note: string; extra: string }
+
+function parseAdmin(wb: XLSX.WorkBook): CompanyRow[] {
+  const ws = wb.Sheets['admin']
+  if (!ws) return []
+  const aoa = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: false, defval: '' })
+  const out: CompanyRow[] = []
+  for (const c of aoa.slice(1)) {
+    const row = { reference: t(c[0]), account: t(c[1]), password: t(c[2]), note: t(c[3]), extra: c.slice(4).map(t).filter(Boolean).join('  ｜  ') }
+    if (row.reference || row.account || row.password || row.note || row.extra) out.push(row)
+  }
+  return out
+}
+
 function parse(wb: XLSX.WorkBook): Row[] {
   const out: Row[] = []
   for (const sn of ['properties', 'Booking property']) {
@@ -31,6 +45,8 @@ function parse(wb: XLSX.WorkBook): Row[] {
 
 export default function ImportAccounts() {
   const [rows, setRows] = useState<Row[]>([])
+  const [admin, setAdmin] = useState<CompanyRow[]>([])
+  const [adminMsg, setAdminMsg] = useState('')
   const [users, setUsers] = useState<{ id: string; account: string; name: string }[]>([])
   const [log, setLog] = useState<string[]>([])
   const [created, setCreated] = useState<{ account: string; pw: string }[]>([])
@@ -55,7 +71,7 @@ export default function ImportAccounts() {
     setDone(null); setCreated([]); setLog([])
     const wb = XLSX.read(await f.arrayBuffer())
     const r = parse(wb)
-    setRows(r); await loadUsers()
+    setRows(r); setAdmin(parseAdmin(wb)); setAdminMsg(''); await loadUsers()
     if (!r.length) setLog(['没有读到房源，请确认上传的是 Account 表（里面要有 properties 这一页）。'])
   }
 
@@ -121,6 +137,19 @@ export default function ImportAccounts() {
     setBusy(false)
   }
 
+  const importAdmin = async () => {
+    setBusy(true); setAdminMsg('')
+    const { data: have } = await supabase.from('company_accounts').select('reference, account').limit(2000)
+    const seen = new Set((have ?? []).map((x) => `${x.reference}\u0000${x.account}`))
+    const fresh = admin.filter((r) => { const k = `${r.reference}\u0000${r.account}`; if (seen.has(k)) return false; seen.add(k); return true })
+    if (fresh.length) {
+      const { error } = await supabase.from('company_accounts').insert(fresh.map((r) => ({ reference: r.reference, account: r.account, password: r.password || null, note: r.note || null, extra: r.extra || null })))
+      if (error) { setAdminMsg(`导入失败：${error.message}`); setBusy(false); return }
+    }
+    setAdminMsg(`导入 ${fresh.length} 条${admin.length - fresh.length ? `，${admin.length - fresh.length} 条已经有了，没动` : ''}。到“账号库”查看。`)
+    setBusy(false)
+  }
+
   const missing = duties.filter(([d]) => !accountOf(d))
 
   return (
@@ -163,6 +192,14 @@ export default function ImportAccounts() {
               {done.unmatched.length > 0 && <p className="small" style={{ color: '#8a5a00' }}>有 {done.unmatched.length} 个房源在系统里找不到同名的，没导入（名字写法不同，或是已下线的）：{done.unmatched.slice(0, 40).join('、')}{done.unmatched.length > 40 ? '…' : ''}</p>}
             </div>
           )}
+        </section>
+      )}
+      {admin.length > 0 && (
+        <section className="card" style={{ marginBottom: 16 }}>
+          <h3 style={{ marginTop: 0 }}>4. 公司通用账号（admin 页）</h3>
+          <p className="muted small">读到 {admin.length} 条（Google Drive、Gmail、各平台总账号、Hostaway、VPN 等）。原样导入：名称、账号、密码、备注，后面多出来的列合在“其他列”里。已经有的（名称和账号相同）不会覆盖，可以重复点。只有管理员能在“账号库”看到。</p>
+          <div className="btn-row"><button disabled={busy} onClick={importAdmin}>{busy ? '导入中…' : `导入 ${admin.length} 条`}</button></div>
+          {adminMsg && <p>{adminMsg}</p>}
         </section>
       )}
       {log.map((l, i) => <p key={i} className="error">{l}</p>)}
