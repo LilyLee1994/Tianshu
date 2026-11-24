@@ -80,7 +80,7 @@ export default function Vault() {
             <tbody>{pShown.map((r) => (
               <tr key={r.id}>
                 <td><CopyVal v={r.login} /></td><td><CopyVal v={r.password} /></td><td><CopyVal v={r.google_password} /></td>
-                <td>{r.needs_verification ? <span className="chip amber" style={{ marginLeft: 0 }}>需要</span> : '—'}{r.note && <div className="muted small">{r.note}</div>}</td>
+                <td>{r.needs_verification ? <span className="chip amber" style={{ marginLeft: 0 }}>需要</span> : '—'}</td>
                 <td style={{ maxWidth: 320 }}>{r.properties.length} 个：{r.properties.map((x) => x.name).join('、')}</td>
                 <td><button className="ghost" onClick={() => setEditP(r)}>编辑</button></td>
               </tr>

@@ -157,7 +157,6 @@ function AccountBlock({ a, raw }: { a: PlatformAccount; raw: string | null }) {
         <dt>登录邮箱</dt><dd>{a.login}<Copy text={a.login} /></dd>
         <dt>Airbnb 密码</dt><dd>{a.password ? <>{a.password}<Copy text={a.password} /></> : '—'}</dd>
         <dt>Google 密码</dt><dd>{a.google_password ? <>{a.google_password}<Copy text={a.google_password} /></> : '—'}</dd>
-        {a.note && <><dt>备注</dt><dd>{a.note}</dd></>}
         {raw && <><dt>原表这一行的其他内容</dt><dd>{raw}<span className="muted small" style={{ display: 'block' }}>（旧账号、Vrbo、Booking、备注等，按原表顺序，用｜隔开，没有加标签）</span></dd></>}
       </dl>
     </div>

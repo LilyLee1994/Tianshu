@@ -108,7 +108,7 @@ export default function ImportAccounts() {
     for (const m of merged.values()) {
       const { data, error } = await supabase.from('platform_accounts').upsert({
         platform: 'Airbnb', login: m.login, password: m.pw || null, google_password: m.gpw || null,
-        needs_verification: !!m.verify, note: m.verify ? `需要验证：${m.verify}` : null, other_info: null,
+        needs_verification: !!m.verify, note: null, other_info: null,
       }, { onConflict: 'platform,login' }).select('id').single()
       if (error || !data) { setLog([`写入账号 ${m.login} 失败：${error?.message}`]); setBusy(false); return }
       ids.set(m.login, data.id as number)
