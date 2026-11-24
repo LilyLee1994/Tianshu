@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { callApi } from '../lib/api'
+import Copy from '../lib/Copy'
 
 interface Details {
   bedrooms: number | null; bathrooms: number | null; max_guests: number | null; beds: string | null; appliances: string[]
@@ -147,11 +148,6 @@ export default function Properties() {
 }
 
 interface PlatformAccount { id: number; login: string; needs_verification: boolean; note: string | null; password: string | null; google_password: string | null }
-
-function Copy({ text }: { text: string }) {
-  const [ok, setOk] = useState(false)
-  return <button className="ghost" style={{ marginLeft: 8, minHeight: 28, padding: '0 8px' }} onClick={() => { navigator.clipboard?.writeText(text); setOk(true); setTimeout(() => setOk(false), 1200) }}>{ok ? '已复制' : '复制'}</button>
-}
 
 function AccountBlock({ a, raw }: { a: PlatformAccount; raw: string | null }) {
   return (

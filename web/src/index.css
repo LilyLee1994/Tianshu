@@ -78,3 +78,6 @@ label.check input { min-height: 0; width: 18px; height: 18px; }
 .plat { flex: 1 1 220px; border: 1px solid #e1e5ea; border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
 .plat a { color: #0f6b66; }
 .raw { background: #f4f6f8; border-radius: 8px; padding: 12px; font-size: 12px; max-height: 320px; overflow: auto; white-space: pre-wrap; word-break: break-all; }
+.copy-ico { background: none; border: 0; padding: 2px 4px; margin-left: 4px; min-height: 0; color: #8a95a3; cursor: pointer; vertical-align: middle; border-radius: 4px; line-height: 0; }
+.copy-ico:hover { color: #0f6b66; background: #eef3f2; }
+td .ghost, td button.ghost { white-space: nowrap; }

@@ -1,14 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { CopyVal } from '../lib/Copy'
 
 interface Company { id: number; reference: string; account: string; password: string | null; note: string | null; extra: string | null }
 interface Plat { id: number; platform: string; login: string; password: string | null; google_password: string | null; needs_verification: boolean; note: string | null; properties: { name: string }[] }
-
-function Copy({ text }: { text: string }) {
-  const [ok, setOk] = useState(false)
-  return <button className="ghost" style={{ marginLeft: 6, minHeight: 26, padding: '0 8px' }} onClick={() => { navigator.clipboard?.writeText(text); setOk(true); setTimeout(() => setOk(false), 1200) }}>{ok ? '已复制' : '复制'}</button>
-}
-const Val = ({ v }: { v: string | null }) => (v ? <>{v}<Copy text={v} /></> : <span className="muted">—</span>)
 
 export default function Vault() {
   const [tab, setTab] = useState<'company' | 'platform'>('company')
@@ -68,7 +63,7 @@ export default function Vault() {
             <tbody>{cShown.map((r) => (
               <tr key={r.id}>
                 <td style={{ whiteSpace: 'pre-wrap' }}>{r.reference || <span className="muted">（无名称）</span>}</td>
-                <td><Val v={r.account || null} /></td><td><Val v={r.password} /></td>
+                <td><CopyVal v={r.account || null} /></td><td><CopyVal v={r.password} /></td>
                 <td style={{ maxWidth: 260, wordBreak: 'break-all' }}>{r.note ?? ''}</td><td style={{ maxWidth: 220, wordBreak: 'break-all' }}>{r.extra ?? ''}</td>
                 <td className="btn-row" style={{ margin: 0 }}><button className="ghost" onClick={() => setEditC(r)}>编辑</button><button className="ghost" onClick={() => delC(r)}>删除</button></td>
               </tr>
@@ -84,7 +79,7 @@ export default function Vault() {
             <thead><tr><th>登录邮箱</th><th>Airbnb 密码</th><th>Google 密码</th><th>电话验证</th><th>房源</th><th></th></tr></thead>
             <tbody>{pShown.map((r) => (
               <tr key={r.id}>
-                <td><Val v={r.login} /></td><td><Val v={r.password} /></td><td><Val v={r.google_password} /></td>
+                <td><CopyVal v={r.login} /></td><td><CopyVal v={r.password} /></td><td><CopyVal v={r.google_password} /></td>
                 <td>{r.needs_verification ? <span className="chip amber" style={{ marginLeft: 0 }}>需要</span> : '—'}{r.note && <div className="muted small">{r.note}</div>}</td>
                 <td style={{ maxWidth: 320 }}>{r.properties.length} 个：{r.properties.map((x) => x.name).join('、')}</td>
                 <td><button className="ghost" onClick={() => setEditP(r)}>编辑</button></td>
