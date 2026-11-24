@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { callApi } from '../lib/api'
 import Copy from '../lib/Copy'
+import { HistoryModal } from '../lib/History'
 
 interface Details {
   bedrooms: number | null; bathrooms: number | null; max_guests: number | null; beds: string | null; appliances: string[]
@@ -138,7 +139,7 @@ export default function Properties() {
           </div>
           {cur && (editing
             ? <EditForm key={cur.id} row={cur} isAdmin={isAdmin} assistants={assistants} onCancel={() => setEditing(false)} onSaved={() => afterSave('已保存。')} />
-            : <Detail row={cur} canEdit={canEdit} onEdit={() => { setEditing(true); setMsg('') }} />)}
+            : <Detail row={cur} canEdit={canEdit} isAdmin={isAdmin} onEdit={() => { setEditing(true); setMsg('') }} />)}
         </div>
       )}
 
@@ -185,7 +186,8 @@ function AccountBlock({ a, old }: { a: PlatformAccount; old: string[] }) {
   )
 }
 
-function Detail({ row: r, canEdit, onEdit }: { row: Row; canEdit: boolean; onEdit: () => void }) {
+function Detail({ row: r, canEdit, isAdmin, onEdit }: { row: Row; canEdit: boolean; isAdmin: boolean; onEdit: () => void }) {
+  const [hist, setHist] = useState(false)
   const [rt, setRt] = useState<Record<string, { n: number; avg: number }>>({})
   useEffect(() => {
     supabase.from('review_stats').select('channel_name, n, avg_rating').eq('property_id', r.id).then(({ data }) => {
@@ -200,7 +202,7 @@ function Detail({ row: r, canEdit, onEdit }: { row: Row; canEdit: boolean; onEdi
     <section className="card">
       <div className="title-row">
         <h2>{r.name} <span className={statusClass(st)}>{st}</span></h2>
-        {canEdit && <button className="ghost" onClick={onEdit}>编辑</button>}
+        <span className="btn-row" style={{ margin: 0 }}>{canEdit && <button className="ghost" onClick={onEdit}>编辑</button>}{isAdmin && <button className="ghost" onClick={() => setHist(true)}>修改记录</button>}</span>
       </div>
       <dl>
         <dt>地址</dt><dd>{dash(r.address)}</dd>
@@ -225,6 +227,7 @@ function Detail({ row: r, canEdit, onEdit }: { row: Row; canEdit: boolean; onEdi
         <div className="plat"><b>Booking</b>{r.booking_url ? <a href={r.booking_url.startsWith('http') ? r.booking_url : `https://${r.booking_url}`} target="_blank" rel="noreferrer">打开房源页</a> : <span className="muted">还没填链接</span>}<span className="muted small">{ratingText('Booking.com', false)}</span></div>
       </div>
       {r.airbnb_account && <AccountBlock a={r.airbnb_account} old={r.account_info?.old_accounts ?? []} />}
+      {hist && <HistoryModal title={r.name} filters={[{ table: 'properties', id: r.id }, { table: 'property_details', id: r.id }, { table: 'property_contracts', id: r.id }, { table: 'property_account_info', id: r.id }]} onClose={() => setHist(false)} />}
       {st === '待登记合同' && <p className="warn">水电燃气网络和合同到期日填完整后，房源才算“运营中”。</p>}
     </section>
   )

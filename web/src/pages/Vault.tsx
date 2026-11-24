@@ -1,18 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { CopyVal } from '../lib/Copy'
+import { HistoryModal, AllHistory, fmtAt } from '../lib/History'
 
-interface Company { id: number; reference: string; account: string; password: string | null; note: string | null; extra: string | null }
-interface Plat { id: number; status: string; platform: string; login: string; password: string | null; google_password: string | null; needs_verification: boolean; note: string | null; properties: { name: string }[] }
+interface Company { id: number; reference: string; account: string; password: string | null; note: string | null; extra: string | null; updated_at: string; updated_by_name: string | null }
+interface Plat { id: number; status: string; platform: string; login: string; password: string | null; google_password: string | null; needs_verification: boolean; note: string | null; updated_at: string; updated_by_name: string | null; properties: { name: string }[] }
 
 export default function Vault() {
-  const [tab, setTab] = useState<'company' | 'platform'>('company')
+  const [tab, setTab] = useState<'company' | 'platform' | 'log'>('company')
   const [q, setQ] = useState('')
   const [company, setCompany] = useState<Company[]>([])
   const [plat, setPlat] = useState<Plat[]>([])
   const [msg, setMsg] = useState('')
   const [editC, setEditC] = useState<Partial<Company> | null>(null)
   const [editP, setEditP] = useState<Plat | null>(null)
+  const [hist, setHist] = useState<{ title: string; table: string; id: number } | null>(null)
   const [showOff, setShowOff] = useState(false)
   const [open, setOpen] = useState<Set<string>>(new Set())
   const flip = (k: string) => setOpen((o) => { const n = new Set(o); if (n.has(k)) n.delete(k); else n.add(k); return n })
@@ -21,7 +23,7 @@ export default function Vault() {
   const load = useCallback(async () => {
     const [c, p] = await Promise.all([
       supabase.from('company_accounts').select('*').order('id').limit(1000),
-      supabase.from('platform_accounts').select('id, status, platform, login, password, google_password, needs_verification, note, properties:properties!airbnb_account_id(name)').order('login').limit(1000),
+      supabase.from('platform_accounts').select('id, status, platform, login, password, google_password, needs_verification, note, updated_at, updated_by_name, properties:properties!airbnb_account_id(name)').order('login').limit(1000),
     ])
     if (c.error) setMsg(`读取出错：${c.error.message}`)
     setCompany((c.data ?? []) as never); setPlat((p.data ?? []) as never)
@@ -44,8 +46,10 @@ export default function Vault() {
     if (error) setMsg(error.message); else { setMsg('已删除。'); load() }
   }
   const saveP = async (r: Plat) => {
-    const { error } = await supabase.from('platform_accounts').update({ password: r.password?.trim() || null, google_password: r.google_password?.trim() || null, note: r.note?.trim() || null }).eq('id', r.id)
-    if (error) { setMsg(error.message); return }
+    const login = r.login.trim().toLowerCase()
+    if (!login) { setMsg('登录邮箱不能为空。'); return }
+    const { error } = await supabase.from('platform_accounts').update({ login, status: r.status, password: r.password?.trim() || null, google_password: r.google_password?.trim() || null, note: r.note?.trim() || null }).eq('id', r.id)
+    if (error) { setMsg(error.code === '23505' ? '这个登录邮箱已经有了。' : error.message); return }
     setEditP(null); setMsg('已保存。'); load()
   }
 
@@ -56,7 +60,8 @@ export default function Vault() {
       <div className="btn-row" style={{ marginBottom: 12 }}>
         <button className={tab === 'company' ? 'pill on' : 'pill'} onClick={() => setTab('company')}>公司通用账号（{company.length}）</button>
         <button className={tab === 'platform' ? 'pill on' : 'pill'} onClick={() => setTab('platform')}>Airbnb 平台账号（{plat.filter((r) => r.status !== '已下线').length}）</button>
-        <input placeholder="搜索" value={q} onChange={(e) => setQ(e.target.value)} />
+        <button className={tab === 'log' ? 'pill on' : 'pill'} onClick={() => setTab('log')}>修改记录</button>
+        {tab !== 'log' && <input placeholder="搜索" value={q} onChange={(e) => setQ(e.target.value)} />}
         {tab === 'platform' && <label className="small" style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}><input type="checkbox" checked={showOff} onChange={(e) => setShowOff(e.target.checked)} />显示已下线（{plat.filter((r) => r.status === '已下线').length}）</label>}
       </div>
       {msg && <p className="muted">{msg}</p>}
@@ -64,13 +69,14 @@ export default function Vault() {
       {tab === 'company' && (
         <div className="table-wrap">
           <table className="tight" style={{ width: 'auto', minWidth: 0 }}>
-            <thead><tr><th>名称</th><th>账号</th><th>密码</th><th>备注</th><th>其他列（原表）</th><th></th></tr></thead>
+            <thead><tr><th>名称</th><th>账号</th><th>密码</th><th>备注</th><th>其他列（原表）</th><th>最后修改</th><th></th></tr></thead>
             <tbody>{cShown.map((r) => (
               <tr key={r.id}>
                 <td><Ell k={`cr${r.id}`} text={r.reference || null} />{!r.reference && <span className="muted">（无名称）</span>}</td>
                 <td><CopyVal v={r.account || null} /></td><td><CopyVal v={r.password} /></td>
                 <td><Ell k={`cn${r.id}`} text={r.note} /></td><td><Ell k={`cx${r.id}`} text={r.extra} /></td>
-                <td className="btn-row" style={{ margin: 0 }}><button className="ghost" onClick={() => setEditC(r)}>编辑</button><button className="ghost" onClick={() => delC(r)}>删除</button></td>
+                <td className="muted small" style={{ whiteSpace: 'nowrap' }}>{r.updated_by_name ? `${r.updated_by_name} ${fmtAt(r.updated_at)}` : '—'}</td>
+                <td className="btn-row" style={{ margin: 0 }}><button className="ghost" onClick={() => setEditC(r)}>编辑</button><button className="ghost" onClick={() => setHist({ title: r.reference || r.account, table: 'company_accounts', id: r.id })}>记录</button><button className="ghost" onClick={() => delC(r)}>删除</button></td>
               </tr>
             ))}</tbody>
           </table>
@@ -81,12 +87,13 @@ export default function Vault() {
       {tab === 'platform' && (
         <div className="table-wrap">
           <table className="tight" style={{ width: 'auto', minWidth: 0 }}>
-            <thead><tr><th>登录邮箱</th><th>Airbnb 密码</th><th>Google 密码</th><th>房源</th><th></th></tr></thead>
+            <thead><tr><th>登录邮箱</th><th>Airbnb 密码</th><th>Google 密码</th><th>房源</th><th>最后修改</th><th></th></tr></thead>
             <tbody>{pShown.map((r) => (
               <tr key={r.id}>
                 <td><CopyVal v={r.login} /></td><td><CopyVal v={r.password} /></td><td><CopyVal v={r.google_password} /></td>
                 <td><Ell k={`pp${r.id}`} text={`${r.properties.length} 个：${r.properties.map((x) => x.name).join('、')}`} /></td>
-                <td><button className="ghost" onClick={() => setEditP(r)}>编辑</button></td>
+                <td className="muted small" style={{ whiteSpace: 'nowrap' }}>{r.updated_by_name ? `${r.updated_by_name} ${fmtAt(r.updated_at)}` : '—'}</td>
+                <td className="btn-row" style={{ margin: 0 }}><button className="ghost" onClick={() => setEditP(r)}>编辑</button><button className="ghost" onClick={() => setHist({ title: r.login, table: 'platform_accounts', id: r.id })}>记录</button></td>
               </tr>
             ))}</tbody>
           </table>
@@ -94,6 +101,8 @@ export default function Vault() {
         </div>
       )}
 
+      {tab === 'log' && <AllHistory />}
+      {hist && <HistoryModal title={hist.title} filters={[{ table: hist.table, id: hist.id }]} onClose={() => setHist(null)} />}
       {editC && <CompanyModal r={editC} onClose={() => setEditC(null)} onSave={saveC} />}
       {editP && <PlatModal r={editP} onClose={() => setEditP(null)} onSave={saveP} />}
     </div>
@@ -123,7 +132,9 @@ function PlatModal({ r, onClose, onSave }: { r: Plat; onClose: () => void; onSav
   return (
     <div className="modal-bg" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>{r.login}</h2>
+        <h2>编辑平台账号</h2>
+        <label>登录邮箱<input value={f.login} onChange={(e) => setF({ ...f, login: e.target.value })} /></label>
+        <label>状态<select value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })}><option>在用</option><option>已下线</option></select></label>
         <label>Airbnb 密码<input value={f.password ?? ''} onChange={(e) => setF({ ...f, password: e.target.value })} /></label>
         <label>Google 密码<input value={f.google_password ?? ''} onChange={(e) => setF({ ...f, google_password: e.target.value })} /></label>
         <label>备注<input value={f.note ?? ''} onChange={(e) => setF({ ...f, note: e.target.value })} /></label>
