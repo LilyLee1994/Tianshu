@@ -94,6 +94,7 @@ export default async function handler(req: Req, res: Res) {
 
     if (st.phase === 'cleaning') {
       st.counts.autoCleaning = await autoCleaning(db, today)
+      st.counts.cleaningFeeChanges = await syncGuestCleaningFee(db, today)
       st.phase = 'reviews'; await save()
     }
 
@@ -155,6 +156,25 @@ export default async function handler(req: Req, res: Res) {
     await save({ error: msg })      // 不标记结束，下次调用会从当前阶段重试
     return res.status(500).json({ error: msg })
   }
+}
+
+// 清洁费表里「向客人收取」跟着 Hostaway 走：每个房源取「最近一次下单」的订单的清洁费（订单的清洁费是下单时定的，
+// 所以最近下的那单最能代表现在的标价）。和表里最新一条不同就记一条新的（今天生效），付 Alisa 的价沿用。
+async function syncGuestCleaningFee(db: ReturnType<typeof adminClient>, today: string) {
+  const { data: rs } = await db.from('reservations').select('property_id, cleaning_fee, status, reserved_at').not('property_id', 'is', null).gte('arrival_date', addDays(today, -60)).order('reserved_at', { ascending: false, nullsFirst: false }).limit(5000)
+  const newest = new Map<number, number>()
+  for (const r of rs ?? []) {
+    const pid = r.property_id as number, fee = Number(r.cleaning_fee) || 0
+    if (newest.has(pid) || fee <= 0 || !active(r.status)) continue
+    newest.set(pid, fee)
+  }
+  const { data: cf } = await db.from('cleaning_fees').select('property_id, standard_fee, deep_fee, guest_fee, effective_date').order('effective_date', { ascending: false }).limit(10000)
+  const cur = new Map<number, { standard_fee: number | null; deep_fee: number | null; guest_fee: number | null }>()
+  for (const f of cf ?? []) if (!cur.has(f.property_id as number)) cur.set(f.property_id as number, f)
+  const rows = [...newest].filter(([pid, fee]) => { const c = cur.get(pid); return !c || c.guest_fee == null || Math.abs(Number(c.guest_fee) - fee) >= 0.5 })
+    .map(([pid, fee]) => ({ property_id: pid, guest_fee: fee, standard_fee: cur.get(pid)?.standard_fee ?? null, deep_fee: cur.get(pid)?.deep_fee ?? null, effective_date: today }))
+  if (rows.length) { const { error } = await db.from('cleaning_fees').upsert(rows, { onConflict: 'property_id,effective_date' }); if (error) return `出错：${error.message}` }
+  return rows.length
 }
 
 // 自动派清洁：今天和明天退房的订单，各生成一张清洁单。
