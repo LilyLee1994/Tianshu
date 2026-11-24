@@ -46,6 +46,14 @@ export async function requireAdmin(req: Req, res: Res, db: SupabaseClient): Prom
   return c
 }
 
+export async function requireFinance(req: Req, res: Res, db: SupabaseClient): Promise<Caller | null> {
+  if (req.method !== 'POST') { res.status(405).json({ error: '只支持 POST。' }); return null }
+  const c = await authenticate(req, res, db)
+  if (!c) return null
+  if (c.role !== 'admin' && c.role !== 'finance') { res.status(403).json({ error: '只有管理员和财务可以做这个操作。' }); return null }
+  return c
+}
+
 // 悉尼时区的今天（YYYY-MM-DD）
 export const sydneyToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Australia/Sydney' })
 
