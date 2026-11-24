@@ -13,7 +13,7 @@ async function shrink(file: File): Promise<Blob> {
 }
 
 // 上传一批照片到这张工单的目录，返回路径
-export async function uploadPhotos(orderId: number, files: File[]): Promise<string[]> {
+export async function uploadPhotos(orderId: number | string, files: File[]): Promise<string[]> {
   const out: string[] = []
   for (const f of files) {
     const blob = await shrink(f)

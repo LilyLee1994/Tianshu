@@ -6,7 +6,7 @@ import { money } from '../lib/ui'
 
 interface St {
   id: number; property_id: number; month: string; reservations: number; nights: number; rental_income: number; commission_rate: number
-  commission: number; platform_fee: number; gst: number; owner_costs: number; adjustment: number; adjustment_note: string | null
+  commission: number; platform_fee: number; gst: number; owner_costs: number; claims_in: number; adjustment: number; adjustment_note: string | null
   payable: number; status: '草稿' | '已确认' | '已付'; property: { name: string; assistant: { name: string } | null } | null
 }
 
@@ -43,8 +43,8 @@ export default function Statements() {
 
   const total = useMemo(() => shown.reduce((a, r) => ({
     rental: a.rental + Number(r.rental_income), comm: a.comm + Number(r.commission), plat: a.plat + Number(r.platform_fee), gst: a.gst + Number(r.gst),
-    cost: a.cost + Number(r.owner_costs), adj: a.adj + Number(r.adjustment), pay: a.pay + Number(r.payable),
-  }), { rental: 0, comm: 0, plat: 0, gst: 0, cost: 0, adj: 0, pay: 0 }), [shown])
+    cost: a.cost + Number(r.owner_costs), claims: a.claims + Number(r.claims_in), adj: a.adj + Number(r.adjustment), pay: a.pay + Number(r.payable),
+  }), { rental: 0, comm: 0, plat: 0, gst: 0, cost: 0, claims: 0, adj: 0, pay: 0 }), [shown])
 
   const act = async (body: Record<string, unknown>, ok: string) => {
     setBusy(true); setMsg('')
@@ -56,8 +56,8 @@ export default function Statements() {
   }
 
   const exportCsv = () => {
-    const head = ['房源', '助理', '订单数', '晚数', '房费', '佣金比例', '佣金', '平台费', 'GST', '房东承担维修', '调整', '调整说明', '应付房东', '状态']
-    const lines = shown.map((r) => [r.property?.name, r.property?.assistant?.name ?? '', r.reservations, r.nights, r.rental_income, r.commission_rate, r.commission, r.platform_fee, r.gst, r.owner_costs, r.adjustment, r.adjustment_note ?? '', r.payable, r.status]
+    const head = ['房源', '助理', '订单数', '晚数', '房费', '佣金比例', '佣金', '平台费', 'GST', '房东承担维修', '索赔到账', '调整', '调整说明', '应付房东', '状态']
+    const lines = shown.map((r) => [r.property?.name, r.property?.assistant?.name ?? '', r.reservations, r.nights, r.rental_income, r.commission_rate, r.commission, r.platform_fee, r.gst, r.owner_costs, r.claims_in, r.adjustment, r.adjustment_note ?? '', r.payable, r.status]
       .map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))
     const url = URL.createObjectURL(new Blob(['﻿' + [head.join(','), ...lines].join('\n')], { type: 'text/csv;charset=utf-8' }))
     const a = document.createElement('a'); a.href = url; a.download = `房东结算-${month}.csv`; a.click(); URL.revokeObjectURL(url)
@@ -66,7 +66,7 @@ export default function Statements() {
   return (
     <div>
       <h1>房东结算（财务）</h1>
-      <p className="muted small">应付房东 = 房费（不含清洁费，按退房日归月）先扣平台费 16.5%，再在剩下的金额上扣佣金（比例 × 1.1，默认 15% → 16.5%）；再 ± 手工调整、− 房东承担的维修费。平台费和佣金已含 GST，“其中 GST”仅供对账。确认后不能再改。</p>
+      <p className="muted small">应付房东 = 房费（不含清洁费，按退房日归月）先扣平台费 16.5%，再在剩下的金额上扣佣金（比例 × 1.1，默认 15% → 16.5%）；再 + 当月到账的索赔、± 手工调整、− 房东承担的维修费。平台费和佣金已含 GST，“其中 GST”仅供对账。确认后不能再改。</p>
       <div className="btn-row" style={{ marginBottom: 12 }}>
         <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
         <input placeholder="搜索房源" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -80,8 +80,8 @@ export default function Statements() {
       {msg && <p className="muted">{msg}</p>}
 
       <div className="table-wrap">
-        <table style={{ minWidth: 1100 }}>
-          <thead><tr><th>房源</th><th>助理</th><th>订单/晚</th><th>房费</th><th>佣金</th><th>平台费</th><th>其中 GST</th><th>维修扣款</th><th>调整</th><th>应付房东</th><th>状态</th>{canEdit && <th></th>}</tr></thead>
+        <table style={{ minWidth: 1180 }}>
+          <thead><tr><th>房源</th><th>助理</th><th>订单/晚</th><th>房费</th><th>佣金</th><th>平台费</th><th>其中 GST</th><th>维修扣款</th><th>索赔到账</th><th>调整</th><th>应付房东</th><th>状态</th>{canEdit && <th></th>}</tr></thead>
           <tbody>
             {shown.map((r) => (
               <tr key={r.id}>
@@ -89,7 +89,7 @@ export default function Statements() {
                 <td>{r.reservations} / {r.nights}</td>
                 <td>{money(r.rental_income)}</td>
                 <td>{money(r.commission)} <span className="muted small">{Math.round(Number(r.commission_rate) * 1000) / 10}%</span></td>
-                <td>{money(r.platform_fee)}</td><td>{money(r.gst)}</td><td>{money(r.owner_costs)}</td>
+                <td>{money(r.platform_fee)}</td><td>{money(r.gst)}</td><td>{money(r.owner_costs)}</td><td>{Number(r.claims_in) ? money(r.claims_in) : '—'}</td>
                 <td title={r.adjustment_note ?? ''}>{Number(r.adjustment) ? money(r.adjustment) : '—'}</td>
                 <td><b>{money(r.payable)}</b></td>
                 <td><span className={chip(r.status)}>{r.status}</span></td>
@@ -102,7 +102,7 @@ export default function Statements() {
             {shown.length > 0 && (
               <tr style={{ fontWeight: 600 }}>
                 <td>合计（{shown.length} 个房源）</td><td></td><td></td>
-                <td>{money(total.rental)}</td><td>{money(total.comm)}</td><td>{money(total.plat)}</td><td>{money(total.gst)}</td><td>{money(total.cost)}</td><td>{money(total.adj)}</td><td>{money(total.pay)}</td><td></td>{canEdit && <td></td>}
+                <td>{money(total.rental)}</td><td>{money(total.comm)}</td><td>{money(total.plat)}</td><td>{money(total.gst)}</td><td>{money(total.cost)}</td><td>{money(total.claims)}</td><td>{money(total.adj)}</td><td>{money(total.pay)}</td><td></td>{canEdit && <td></td>}
               </tr>
             )}
           </tbody>

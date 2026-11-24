@@ -43,11 +43,16 @@ export default async function handler(req: Req, res: Res) {
       const { data: wo } = await db.from('work_orders').select('property_id, amount').eq('payer', '房东').eq('status', '已完成').gte('done_date', from).lt('done_date', to)
       for (const w of wo ?? []) costs.set(w.property_id as number, (costs.get(w.property_id as number) ?? 0) + (Number(w.amount) || 0))
 
+      // 当月已赔付的索赔（按到账日期）
+      const claimsIn = new Map<number, number>()
+      const { data: cl } = await db.from('claims').select('property_id, paid_amount').eq('status', '已赔付').gte('paid_date', from).lt('paid_date', to)
+      for (const c of cl ?? []) claimsIn.set(c.property_id as number, (claimsIn.get(c.property_id as number) ?? 0) + (Number(c.paid_amount) || 0))
+
       const { data: existing } = await db.from('owner_statements').select('id, property_id, status, adjustment').eq('month', from)
       const ex = new Map((existing ?? []).map((x) => [x.property_id as number, x]))
 
       let made = 0, kept = 0
-      for (const pid of new Set([...inc.keys(), ...costs.keys()])) {
+      for (const pid of new Set([...inc.keys(), ...costs.keys(), ...claimsIn.keys()])) {
         const old = ex.get(pid)
         if (old && old.status !== '草稿') { kept++; continue }
         const e = inc.get(pid) ?? { n: 0, nights: 0, rental: 0 }
@@ -55,9 +60,9 @@ export default async function handler(req: Req, res: Res) {
         const platform = r2(e.rental * platformRate)                                  // 平台费（含 GST）
         const commission = r2((e.rental - platform) * cr * (1 + gstRate))              // 佣金（含 GST），在扣完平台费的金额上算
         const gst = r2(platform * gstRate / (1 + gstRate) + commission * gstRate / (1 + gstRate)) // 其中的 GST，仅供对账参考
-        const ownerCosts = r2(costs.get(pid) ?? 0), adj = Number(old?.adjustment ?? 0)
-        const payable = r2(e.rental - commission - platform - ownerCosts + adj)
-        const row = { property_id: pid, month: from, reservations: e.n, nights: e.nights, rental_income: r2(e.rental), commission_rate: cr, commission, platform_fee: platform, gst, owner_costs: ownerCosts, payable, generated_at: new Date().toISOString() }
+        const ownerCosts = r2(costs.get(pid) ?? 0), claimsAmt = r2(claimsIn.get(pid) ?? 0), adj = Number(old?.adjustment ?? 0)
+        const payable = r2(e.rental - commission - platform - ownerCosts + claimsAmt + adj)
+        const row = { property_id: pid, month: from, reservations: e.n, nights: e.nights, rental_income: r2(e.rental), commission_rate: cr, commission, platform_fee: platform, gst, owner_costs: ownerCosts, claims_in: claimsAmt, payable, generated_at: new Date().toISOString() }
         const { error } = await db.from('owner_statements').upsert(row, { onConflict: 'property_id,month' })
         if (error) return res.status(500).json({ error: error.message })
         made++
@@ -72,7 +77,7 @@ export default async function handler(req: Req, res: Res) {
       if (st.status !== '草稿') return res.status(400).json({ error: '已确认的结算单不能再改。' })
       const adj = Number(adjustment)
       if (Number.isNaN(adj)) return res.status(400).json({ error: '调整金额要填数字。' })
-      const payable = r2(Number(st.rental_income) - Number(st.commission) - Number(st.platform_fee) - Number(st.owner_costs) + adj)
+      const payable = r2(Number(st.rental_income) - Number(st.commission) - Number(st.platform_fee) - Number(st.owner_costs) + Number(st.claims_in) + adj)
       await db.from('owner_statements').update({ adjustment: adj, adjustment_note: note || null, payable }).eq('id', id)
       return res.status(200).json({ ok: true })
     }
