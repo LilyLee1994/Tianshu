@@ -40,7 +40,7 @@ export default function Vault() {
     if (error) setMsg(error.message); else { setMsg('已删除。'); load() }
   }
   const saveP = async (r: Plat) => {
-    const { error } = await supabase.from('platform_accounts').update({ password: r.password?.trim() || null, google_password: r.google_password?.trim() || null, needs_verification: r.needs_verification, note: r.note?.trim() || null }).eq('id', r.id)
+    const { error } = await supabase.from('platform_accounts').update({ password: r.password?.trim() || null, google_password: r.google_password?.trim() || null, note: r.note?.trim() || null }).eq('id', r.id)
     if (error) { setMsg(error.message); return }
     setEditP(null); setMsg('已保存。'); load()
   }
@@ -75,12 +75,11 @@ export default function Vault() {
 
       {tab === 'platform' && (
         <div className="table-wrap">
-          <table style={{ minWidth: 1000 }}>
-            <thead><tr><th>登录邮箱</th><th>Airbnb 密码</th><th>Google 密码</th><th>电话验证</th><th>房源</th><th></th></tr></thead>
+          <table style={{ minWidth: 900 }}>
+            <thead><tr><th>登录邮箱</th><th>Airbnb 密码</th><th>Google 密码</th><th>房源</th><th></th></tr></thead>
             <tbody>{pShown.map((r) => (
               <tr key={r.id}>
                 <td><CopyVal v={r.login} /></td><td><CopyVal v={r.password} /></td><td><CopyVal v={r.google_password} /></td>
-                <td>{r.needs_verification ? <span className="chip amber" style={{ marginLeft: 0 }}>需要</span> : '—'}</td>
                 <td style={{ maxWidth: 320 }}>{r.properties.length} 个：{r.properties.map((x) => x.name).join('、')}</td>
                 <td><button className="ghost" onClick={() => setEditP(r)}>编辑</button></td>
               </tr>
@@ -122,7 +121,6 @@ function PlatModal({ r, onClose, onSave }: { r: Plat; onClose: () => void; onSav
         <h2>{r.login}</h2>
         <label>Airbnb 密码<input value={f.password ?? ''} onChange={(e) => setF({ ...f, password: e.target.value })} /></label>
         <label>Google 密码<input value={f.google_password ?? ''} onChange={(e) => setF({ ...f, google_password: e.target.value })} /></label>
-        <label><span><input type="checkbox" checked={f.needs_verification} onChange={(e) => setF({ ...f, needs_verification: e.target.checked })} /> 需要电话验证</span></label>
         <label>备注<input value={f.note ?? ''} onChange={(e) => setF({ ...f, note: e.target.value })} /></label>
         <div className="btn-row"><button onClick={() => onSave(f)}>保存</button><button className="ghost" onClick={onClose}>取消</button></div>
       </div>

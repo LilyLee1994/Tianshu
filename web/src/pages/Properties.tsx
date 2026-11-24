@@ -152,7 +152,7 @@ interface PlatformAccount { id: number; login: string; needs_verification: boole
 function AccountBlock({ a, raw, old }: { a: PlatformAccount; raw: string | null; old: string[] }) {
   return (
     <div className="plat" style={{ display: 'block', marginTop: 12 }}>
-      <b>平台账号（Airbnb）</b>{a.needs_verification && <span className="chip amber">需要电话验证</span>}
+      <b>平台账号（Airbnb）</b>
       <dl style={{ marginTop: 8 }}>
         <dt>登录邮箱</dt><dd>{a.login}<Copy text={a.login} /></dd>
         <dt>Airbnb 密码</dt><dd>{a.password ? <>{a.password}<Copy text={a.password} /></> : '—'}</dd>
