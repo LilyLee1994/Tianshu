@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { callApi } from '../lib/api'
 import Copy from '../lib/Copy'
+import { useNavigate } from 'react-router-dom'
 import { HistoryModal } from '../lib/History'
 
 interface Details {
@@ -188,6 +189,7 @@ function AccountBlock({ a, old }: { a: PlatformAccount; old: string[] }) {
 
 function Detail({ row: r, canEdit, isAdmin, onEdit }: { row: Row; canEdit: boolean; isAdmin: boolean; onEdit: () => void }) {
   const [hist, setHist] = useState(false)
+  const nav = useNavigate()
   const [rt, setRt] = useState<Record<string, { n: number; avg: number }>>({})
   useEffect(() => {
     supabase.from('review_stats').select('channel_name, n, avg_rating').eq('property_id', r.id).then(({ data }) => {
@@ -202,7 +204,7 @@ function Detail({ row: r, canEdit, isAdmin, onEdit }: { row: Row; canEdit: boole
     <section className="card">
       <div className="title-row">
         <h2>{r.name} <span className={statusClass(st)}>{st}</span></h2>
-        <span className="btn-row" style={{ margin: 0 }}>{canEdit && <button className="ghost" onClick={onEdit}>编辑</button>}{isAdmin && <button className="ghost" onClick={() => setHist(true)}>修改记录</button>}</span>
+        <span className="btn-row" style={{ margin: 0 }}><button className="ghost" onClick={() => nav(`/reviews?property=${r.id}`)}>差评</button><button className="ghost" onClick={() => nav(`/claims?property=${r.id}`)}>索赔</button>{canEdit && <button className="ghost" onClick={onEdit}>编辑</button>}{isAdmin && <button className="ghost" onClick={() => setHist(true)}>修改记录</button>}</span>
       </div>
       <dl>
         <dt>地址</dt><dd>{dash(r.address)}</dd>

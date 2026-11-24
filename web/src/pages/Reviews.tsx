@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { coveredAssistantIds } from '../lib/cover'
@@ -23,7 +24,9 @@ export default function Reviews() {
   const [cover, setCover] = useState<Set<string>>(new Set())
   useEffect(() => { if (profile?.role === 'assistant') coveredAssistantIds(profile.id).then(setCover) }, [profile?.id, profile?.role])
   const isAssistant = profile?.role === 'assistant'
-  const [days, setDays] = useState(7)
+  const [sp, setSp] = useSearchParams()
+  const onlyProp = Number(sp.get('property')) || null
+  const [days, setDays] = useState(onlyProp ? 90 : 7)
   const [props, setProps] = useState<Prop[]>([])
   const [stats, setStats] = useState<Stat[]>([])
   const [revs, setRevs] = useState<Rev[]>([])
@@ -52,7 +55,7 @@ export default function Reviews() {
     return !isAssistant || (!!p.assistant_id && cover.has(p.assistant_id))
   }
 
-  const bad = revs.filter((r) => badOne(r.channel_name, Number(r.rating)) && visible(r.property_id))
+  const bad = revs.filter((r) => badOne(r.channel_name, Number(r.rating)) && visible(r.property_id) && (!onlyProp || r.property_id === onlyProp))
 
   const lowRows = useMemo(() => {
     const by = new Map<number, { a?: Stat; b?: Stat }>()
@@ -64,9 +67,9 @@ export default function Reviews() {
     }
     return [...by.entries()]
       .map(([pid, e]) => ({ p: pById.get(pid), e }))
-      .filter((x) => x.p && !INACTIVE.test(x.p.name) && visible(x.p.id) && ((x.e.a && lowAvg('Airbnb', Number(x.e.a.avg_rating))) || (x.e.b && lowAvg('Booking.com', Number(x.e.b.avg_rating)))))
+      .filter((x) => x.p && !INACTIVE.test(x.p.name) && visible(x.p.id) && (!onlyProp || x.p.id === onlyProp) && ((x.e.a && lowAvg('Airbnb', Number(x.e.a.avg_rating))) || (x.e.b && lowAvg('Booking.com', Number(x.e.b.avg_rating)))))
       .sort((x, y) => (Number(x.e.a?.avg_rating ?? 99) / 2) - (Number(y.e.a?.avg_rating ?? 99) / 2))
-  }, [stats, pById, profile]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [stats, pById, profile, onlyProp]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const cellOf = (s: Stat | undefined) => {
     if (!s) return <span className="muted">暂无评价</span>
@@ -77,6 +80,7 @@ export default function Reviews() {
   return (
     <div>
       <h1>差评</h1>
+      {onlyProp && <p className="btn-row" style={{ alignItems: 'center' }}><span className="chip blue" style={{ marginLeft: 0 }}>只看：{pById.get(onlyProp)?.name ?? '这个房源'}</span><button className="ghost" onClick={() => setSp({})}>看全部房源</button></p>}
       {err && <p className="error">读取出错：{err}</p>}
 
       <section className="card" style={{ marginBottom: 16 }}>

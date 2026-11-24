@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { coveredAssistantIds } from '../lib/cover'
@@ -24,6 +25,8 @@ export default function Claims() {
   const [rows, setRows] = useState<Claim[]>([])
   const [props, setProps] = useState<Prop[]>([])
   const [status, setStatus] = useState('')
+  const [sp, setSp] = useSearchParams()
+  const onlyProp = Number(sp.get('property')) || null
   const [q, setQ] = useState('')
   const [adding, setAdding] = useState(false)
   const [upd, setUpd] = useState<Claim | null>(null)
@@ -42,10 +45,11 @@ export default function Claims() {
 
   const shown = useMemo(() => rows.filter((r) => {
     if (isAssistant && !(r.property?.assistant_id && cover.has(r.property.assistant_id))) return false
+    if (onlyProp && r.property_id !== onlyProp) return false
     if (status && r.status !== status) return false
     if (q && !`${r.property?.name} ${r.content}`.toLowerCase().includes(q.toLowerCase())) return false
     return true
-  }), [rows, isAssistant, status, q, profile])
+  }), [rows, isAssistant, status, q, profile, onlyProp, cover])
 
   const open = shown.filter((r) => ['待提交', '已提交平台', '平台处理中'].includes(r.status)).length
   const paid = shown.filter((r) => r.status === '已赔付').reduce((a, r) => a + Number(r.paid_amount ?? 0), 0)
@@ -54,6 +58,7 @@ export default function Claims() {
     <div>
       <div className="title-row"><h1>索赔</h1><button onClick={() => setAdding(true)}>+ 新增索赔</button></div>
       <p className="muted small">客服在平台上发起索赔后，在这里记一条；跟进人定期查看平台结果，更新状态并填到账金额。<b>已赔付的到账金额会自动进当月房东结算</b>，被驳回或放弃的不进。</p>
+      {onlyProp && <p className="btn-row" style={{ alignItems: 'center' }}><span className="chip blue" style={{ marginLeft: 0 }}>只看：{props.find((x) => x.id === onlyProp)?.name ?? '这个房源'}</span><button className="ghost" onClick={() => setSp({})}>看全部房源</button></p>}
       <div className="btn-row" style={{ marginBottom: 12 }}>
         <select value={status} onChange={(e) => setStatus(e.target.value)}>
           <option value="">全部状态</option>{STATUSES.map((s) => <option key={s}>{s}</option>)}
