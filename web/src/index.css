@@ -84,3 +84,17 @@ td .ghost, td button.ghost { white-space: nowrap; }
 .tight th, .tight td { padding: 6px 12px; vertical-align: middle; }
 .cell-ell { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .cell-ell.open { white-space: pre-wrap; word-break: break-all; max-width: 420px; }
+
+/* 今天要处理的：便签，按紧急程度上色 */
+.lv-legend { display: flex; gap: 8px; flex-wrap: wrap; }
+.lv-dot { font-size: 12px; padding: 3px 10px; border-radius: 999px; border: 1px solid transparent; }
+.lv-dot.red, .note.red { background: #fde3e1; border-color: #f2b5b0; }
+.lv-dot.orange, .note.orange { background: #ffe9d2; border-color: #f5c690; }
+.lv-dot.yellow, .note.yellow { background: #fff6c9; border-color: #ecd978; }
+.lv-dot.blue, .note.blue { background: #e1effb; border-color: #a9cdea; }
+.notes { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; margin-top: 12px; }
+.note { text-align: left; display: flex; flex-direction: column; gap: 6px; min-height: 96px; padding: 12px 14px; border-radius: 6px 6px 14px 6px; border: 1px solid; box-shadow: 0 2px 4px rgba(20,48,47,.12); cursor: pointer; align-items: flex-start; }
+.note:hover { transform: translateY(-2px); box-shadow: 0 5px 10px rgba(20,48,47,.18); }
+.note-tag { font-size: 12px; font-weight: 600; opacity: .75; }
+.note.red .note-tag { color: #a3271c; } .note.orange .note-tag { color: #9a5a00; } .note.yellow .note-tag { color: #7a6400; } .note.blue .note-tag { color: #14507a; }
+.note-text { font-size: 14px; line-height: 1.45; color: #1d2b2a; word-break: break-word; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
