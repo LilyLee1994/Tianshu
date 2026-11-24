@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
+import { coveredAssistantIds } from '../lib/cover'
 import { money, today } from '../lib/ui'
 import { signedUrls, uploadPhotos } from '../lib/photos'
 
@@ -17,6 +18,8 @@ interface Prop { id: number; name: string; assistant_id: string | null }
 
 export default function Claims() {
   const { profile } = useAuth()
+  const [cover, setCover] = useState<Set<string>>(new Set())
+  useEffect(() => { if (profile?.role === 'assistant') coveredAssistantIds(profile.id).then(setCover) }, [profile?.id, profile?.role])
   const isAssistant = profile?.role === 'assistant'
   const [rows, setRows] = useState<Claim[]>([])
   const [props, setProps] = useState<Prop[]>([])
@@ -38,7 +41,7 @@ export default function Claims() {
   useEffect(() => { load() }, [load])
 
   const shown = useMemo(() => rows.filter((r) => {
-    if (isAssistant && r.property?.assistant_id !== profile?.id) return false
+    if (isAssistant && !(r.property?.assistant_id && cover.has(r.property.assistant_id))) return false
     if (status && r.status !== status) return false
     if (q && !`${r.property?.name} ${r.content}`.toLowerCase().includes(q.toLowerCase())) return false
     return true
@@ -78,7 +81,7 @@ export default function Claims() {
         {!shown.length && <p className="muted pad">还没有索赔记录。</p>}
       </div>
 
-      {adding && <AddModal props={isAssistant ? props.filter((x) => x.assistant_id === profile?.id) : props} me={profile?.id ?? ''} onClose={() => setAdding(false)} onSaved={() => { setAdding(false); setMsg('已登记。'); load() }} />}
+      {adding && <AddModal props={isAssistant ? props.filter((x) => !!x.assistant_id && cover.has(x.assistant_id)) : props} me={profile?.id ?? ''} onClose={() => setAdding(false)} onSaved={() => { setAdding(false); setMsg('已登记。'); load() }} />}
       {upd && <UpdateModal row={upd} onClose={() => setUpd(null)} onSaved={() => { setUpd(null); setMsg('已更新。'); load() }} />}
       {pics && (
         <div className="modal-bg" onClick={() => setPics(null)}>

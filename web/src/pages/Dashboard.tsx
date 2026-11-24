@@ -8,6 +8,7 @@ import { statusOf } from './Properties'
 import { daysTo } from './Contracts'
 import { badOne } from './Reviews'
 import { openMonth, OPEN_DAY } from './Shifts'
+import { coveredAssistantIds } from '../lib/cover'
 
 interface Todo { tag: string; text: string; to: string; cls: string }
 
@@ -32,7 +33,10 @@ export default function Dashboard() {
       supabase.from('claims').select('content, property:properties(name, assistant_id)').eq('status', '待提交').limit(50),
       profile?.role === 'assistant' ? supabase.from('shift_months').select('status').eq('user_id', profile.id).eq('month', `${openMonth()}-01`).maybeSingle() : Promise.resolve({ data: null }),
       profile?.role === 'admin' ? supabase.from('shift_requests').select('month, reason, user:profiles!shift_requests_user_id_fkey(name)').eq('status', '待审批').limit(50) : Promise.resolve({ data: [] }),
-    ]).then(([o, p, rv, ra, cl, sm, sr]) => {
+          profile?.role === 'assistant' ? coveredAssistantIds(profile.id) : Promise.resolve(new Set<string>()),
+    ]).then(([o, p, rv, ra, cl, sm, sr, cov]) => {
+      const mine = (aid: string | null | undefined) => profile?.role !== 'assistant' || (!!aid && cov.has(aid))
+      const tagOf = (aid: string | null | undefined) => (profile?.role === 'assistant' && aid && aid !== profile.id ? '（代班）' : '')
       const t: Todo[] = []
       if (profile?.role === 'assistant' && (sm.data as { status?: string } | null)?.status !== '已提交') {
         const om = openMonth(), isNext = new Date().toLocaleDateString('en-CA', { timeZone: 'Australia/Sydney' }).slice(0, 7) !== om
@@ -57,10 +61,10 @@ export default function Dashboard() {
       }
       const done = new Set((ra.data ?? []).filter((a: { status: string }) => a.status !== '待处理').map((a: { review_id: number }) => a.review_id))
       for (const r of (rv.data ?? []) as unknown as { id: number; channel_name: string | null; rating: number; reviewed_at: string; property: { name: string; assistant_id: string | null } }[]) {
-        if (profile?.role === 'assistant' && r.property?.assistant_id !== profile.id) continue
-        if (badOne(r.channel_name, Number(r.rating)) && !done.has(r.id)) t.push({ tag: '差评', text: `${r.property?.name} · ${r.channel_name} ${r.channel_name === 'Airbnb' ? Number(r.rating) / 2 + ' 星' : r.rating + ' 分'} · ${r.reviewed_at.slice(0, 10)}`, to: '/reviews', cls: 'purple' })
+        if (!mine(r.property?.assistant_id)) continue
+        if (badOne(r.channel_name, Number(r.rating)) && !done.has(r.id)) t.push({ tag: '差评', text: `${tagOf(r.property?.assistant_id)}${r.property?.name} · ${r.channel_name} ${r.channel_name === 'Airbnb' ? Number(r.rating) / 2 + ' 星' : r.rating + ' 分'} · ${r.reviewed_at.slice(0, 10)}`, to: '/reviews', cls: 'purple' })
       }
-      for (const c of (cl.data ?? []) as unknown as { content: string; property: { name: string; assistant_id: string | null } }[]) if (profile?.role !== 'assistant' || c.property?.assistant_id === profile.id) t.push({ tag: '索赔', text: `${c.property?.name} · ${c.content}，还没提交平台`, to: '/claims', cls: 'amber' })
+      for (const c of (cl.data ?? []) as unknown as { content: string; property: { name: string; assistant_id: string | null } }[]) if (mine(c.property?.assistant_id)) t.push({ tag: '索赔', text: `${tagOf(c.property?.assistant_id)}${c.property?.name} · ${c.content}，还没提交平台`, to: '/claims', cls: 'amber' })
       setTodos(t); setStats({ pending, doing, incomplete }); setLoading(false)
     })
   }, [])

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
+import { coveredAssistantIds } from '../lib/cover'
 import { money, today } from '../lib/ui'
 
 // 评分口径：Airbnb 原始是 10 分制（5 星×2），换成 5 星看；Booking 保持 10 分制。
@@ -19,6 +20,8 @@ type Rev = { id: number; property_id: number; channel_name: string | null; ratin
 
 export default function Reviews() {
   const { profile } = useAuth()
+  const [cover, setCover] = useState<Set<string>>(new Set())
+  useEffect(() => { if (profile?.role === 'assistant') coveredAssistantIds(profile.id).then(setCover) }, [profile?.id, profile?.role])
   const isAssistant = profile?.role === 'assistant'
   const [days, setDays] = useState(7)
   const [props, setProps] = useState<Prop[]>([])
@@ -46,7 +49,7 @@ export default function Reviews() {
   const visible = (pid: number) => {
     const p = pById.get(pid)
     if (!p) return false
-    return !isAssistant || p.assistant_id === profile?.id
+    return !isAssistant || (!!p.assistant_id && cover.has(p.assistant_id))
   }
 
   const bad = revs.filter((r) => badOne(r.channel_name, Number(r.rating)) && visible(r.property_id))
