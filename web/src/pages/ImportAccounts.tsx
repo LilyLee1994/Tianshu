@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx'
 import { supabase } from '../lib/supabase'
 import { callApi } from '../lib/api'
 
-interface Row { duty: string; property: string; login: string; pw: string; gpw: string; verify: string; other: string; old: Old[] }
+interface Row { duty: string; property: string; login: string; pw: string; gpw: string; verify: string; other: string; old: string[] }
 interface Merged { login: string; pw: string; gpw: string; verify: string }
 
 const t = (v: unknown) => String(v ?? '').trim()
@@ -28,28 +28,32 @@ function parseAdmin(wb: XLSX.WorkBook): CompanyRow[] {
 const MAIL = /[\w.+-]+@[\w-]+\.[\w.]+/g
 const OLD_KW = /老账号|老帐号|旧账号|旧帐号/
 const hasMail = (x: string) => { MAIL.lastIndex = 0; return MAIL.test(x) }
-const pwLike = (x: string) => !!x && !/\s/.test(x) && x.length >= 4 && x.length <= 40 && !hasMail(x) && !OLD_KW.test(x) && !/[：:\u4e00-\u9fff]/.test(x)
-interface Old { email: string; password: string; google_password: string }
-
-// 老账号：“旧帐号”那一列里的邮箱，加上任何写着“老账号/旧帐号”的格子里的邮箱。
-// 密码：同一格里邮箱后面跟着的，或邮箱格后面连续的“像密码”的格子（最多 2 个：账号密码、Google 密码）。
-function oldAccounts(cells: string[], login: string): Old[] {
-  const by = new Map<string, string[]>()
+// 老账号：“旧帐号”那一列里的邮箱，加上任何写着“老账号/旧帐号”的格子里的邮箱。只记邮箱；
+// 密码不在这里取，页面上按邮箱去已录入的账号里查（老账号通常也是别的房源在用的账号）。
+function oldAccounts(cells: string[], login: string): string[] {
+  const out = new Set<string>()
   cells.forEach((x, i) => {
     if (!x || !(i === 0 || OLD_KW.test(x)) || !hasMail(x)) return
-    const mails = x.match(MAIL) ?? []
-    mails.forEach((m, k) => {
-      const email = m.toLowerCase()
-      if (email === login) return
-      const pws: string[] = by.get(email) ?? []
-      const after = x.slice(x.indexOf(m) + m.length, k + 1 < mails.length ? x.indexOf(mails[k + 1]) : undefined)
-      const tok = after.split(/[\s（）()、,，;；]+/).filter(Boolean).find(pwLike)
-      if (tok && !pws.includes(tok)) pws.push(tok)
-      if (k === mails.length - 1) for (let j = i + 1; j < cells.length && pws.length < 2 && pwLike(cells[j]); j++) if (!pws.includes(cells[j])) pws.push(cells[j])
-      by.set(email, pws)
-    })
+    for (const m of x.match(MAIL) ?? []) out.add(m.toLowerCase())
   })
-  return [...by.entries()].map(([email, p]) => ({ email, password: p[0] ?? '', google_password: p[1] ?? '' }))
+  out.delete(login)
+  return [...out]
+}
+
+// 已下线账号页：房源、地址、邮箱、密码、Google 密码…；只取邮箱和密码，用来查老账号的密码
+function parseOffline(wb: XLSX.WorkBook) {
+  const ws = wb.Sheets['已下线账号']
+  if (!ws) return []
+  const aoa = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: false, defval: '' })
+  const by = new Map<string, { login: string; pw: string; gpw: string }>()
+  for (const c of aoa) {
+    const m = t(c[2]).match(MAIL)?.[0]
+    if (!m) continue
+    const login = m.toLowerCase(), e = by.get(login) ?? { login, pw: '', gpw: '' }
+    e.pw ||= t(c[3]); e.gpw ||= t(c[4])
+    by.set(login, e)
+  }
+  return [...by.values()]
 }
 
 function parse(wb: XLSX.WorkBook): Row[] {
@@ -75,6 +79,8 @@ export default function ImportAccounts() {
   const [rows, setRows] = useState<Row[]>([])
   const [admin, setAdmin] = useState<CompanyRow[]>([])
   const [adminMsg, setAdminMsg] = useState('')
+  const [offline, setOffline] = useState<{ login: string; pw: string; gpw: string }[]>([])
+  const [offMsg, setOffMsg] = useState('')
   const [users, setUsers] = useState<{ id: string; account: string; name: string }[]>([])
   const [log, setLog] = useState<string[]>([])
   const [created, setCreated] = useState<{ account: string; pw: string }[]>([])
@@ -99,7 +105,7 @@ export default function ImportAccounts() {
     setDone(null); setCreated([]); setLog([])
     const wb = XLSX.read(await f.arrayBuffer())
     const r = parse(wb)
-    setRows(r); setAdmin(parseAdmin(wb)); setAdminMsg(''); await loadUsers()
+    setRows(r); setAdmin(parseAdmin(wb)); setAdminMsg(''); setOffline(parseOffline(wb)); setOffMsg(''); await loadUsers()
     if (!r.length) setLog(['没有读到房源，请确认上传的是 Account 表（里面要有 properties 这一页）。'])
   }
 
@@ -157,7 +163,7 @@ export default function ImportAccounts() {
         if (error) { setLog([`更新房源 ${r.property} 失败：${error.message}`]); setBusy(false); return }
       }
       if (r.other || r.old.length) {
-        const { error } = await supabase.from('property_account_info').upsert({ property_id: p.id, raw: r.other || null, old_list: r.old, old_accounts: r.old.map((o) => o.email) }, { onConflict: 'property_id' })
+        const { error } = await supabase.from('property_account_info').upsert({ property_id: p.id, raw: r.other || null, old_list: [], old_accounts: r.old }, { onConflict: 'property_id' })
         if (error) { setLog([`保存 ${r.property} 的原表备注失败：${error.message}`]); setBusy(false); return }
       }
     }
@@ -175,6 +181,19 @@ export default function ImportAccounts() {
       if (error) { setAdminMsg(`导入失败：${error.message}`); setBusy(false); return }
     }
     setAdminMsg(`导入 ${fresh.length} 条${admin.length - fresh.length ? `，${admin.length - fresh.length} 条已经有了，没动` : ''}。到“账号库”查看。`)
+    setBusy(false)
+  }
+
+  const importOffline = async () => {
+    setBusy(true); setOffMsg('')
+    const { data: have } = await supabase.from('platform_accounts').select('login').limit(5000)
+    const seen = new Set((have ?? []).map((x) => String(x.login).toLowerCase()))
+    const fresh = offline.filter((o) => !seen.has(o.login))
+    for (let i = 0; i < fresh.length; i += 100) {
+      const { error } = await supabase.from('platform_accounts').insert(fresh.slice(i, i + 100).map((o) => ({ platform: 'Airbnb', login: o.login, password: o.pw || null, google_password: o.gpw || null, status: '已下线' })))
+      if (error) { setOffMsg(`导入失败：${error.message}`); setBusy(false); return }
+    }
+    setOffMsg(`导入 ${fresh.length} 个已下线账号${offline.length - fresh.length ? `，${offline.length - fresh.length} 个已经有了，没动` : ''}。`)
     setBusy(false)
   }
 
@@ -228,6 +247,14 @@ export default function ImportAccounts() {
           <p className="muted small">读到 {admin.length} 条（Google Drive、Gmail、各平台总账号、Hostaway、VPN 等）。原样导入：名称、账号、密码、备注，后面多出来的列合在“其他列”里。已经有的（名称和账号相同）不会覆盖，可以重复点。只有管理员能在“账号库”看到。</p>
           <div className="btn-row"><button disabled={busy} onClick={importAdmin}>{busy ? '导入中…' : `导入 ${admin.length} 条`}</button></div>
           {adminMsg && <p>{adminMsg}</p>}
+        </section>
+      )}
+      {offline.length > 0 && (
+        <section className="card" style={{ marginBottom: 16 }}>
+          <h3 style={{ marginTop: 0 }}>5. 已下线账号（用来查老账号的密码）</h3>
+          <p className="muted small">读到 {offline.length} 个已下线的账号邮箱。导入后标记为“已下线”，不挂在任何房源上，只是让房源里的老账号能按邮箱查到密码。已经有的不会覆盖，可以重复点。</p>
+          <div className="btn-row"><button disabled={busy} onClick={importOffline}>{busy ? '导入中…' : `导入 ${offline.length} 个`}</button></div>
+          {offMsg && <p>{offMsg}</p>}
         </section>
       )}
       {log.map((l, i) => <p key={i} className="error">{l}</p>)}

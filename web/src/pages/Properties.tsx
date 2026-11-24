@@ -15,7 +15,7 @@ interface Contract {
 }
 interface Row {
   id: number; name: string; address: string | null; region: string | null; assistant_id: string | null
-  airbnb_url: string | null; booking_url: string | null; commission_rate: number | null; airbnb_account: PlatformAccount | null; account_info: { old_list: OldAccount[] | null; old_accounts: string[] | null } | null; legacy: boolean; hostaway_id: number | null; cleaning_by: string; cleaner_id: string | null; cleaner: { name: string } | null
+  airbnb_url: string | null; booking_url: string | null; commission_rate: number | null; airbnb_account: PlatformAccount | null; account_info: { old_accounts: string[] | null } | null; legacy: boolean; hostaway_id: number | null; cleaning_by: string; cleaner_id: string | null; cleaner: { name: string } | null
   assistant: { name: string } | null
   property_details: Details | null
   property_contracts: Contract | null
@@ -55,7 +55,7 @@ export default function Properties() {
   const load = useCallback(async () => {
     const [p, a] = await Promise.all([
       supabase.from('properties')
-        .select('id, name, address, region, assistant_id, airbnb_url, booking_url, commission_rate, legacy, hostaway_id, cleaning_by, airbnb_account:platform_accounts!airbnb_account_id(id, login, needs_verification, note, password, google_password), account_info:property_account_info(old_list, old_accounts), assistant:profiles!assistant_id(name), property_details(*), property_contracts(*)')
+        .select('id, name, address, region, assistant_id, airbnb_url, booking_url, commission_rate, legacy, hostaway_id, cleaning_by, airbnb_account:platform_accounts!airbnb_account_id(id, login, needs_verification, note, password, google_password), account_info:property_account_info(old_accounts), assistant:profiles!assistant_id(name), property_details(*), property_contracts(*)')
         .order('name'),
       supabase.from('profiles').select('id, name').eq('role', 'assistant').eq('active', true).order('name'),
     ])
@@ -147,10 +147,18 @@ export default function Properties() {
   )
 }
 
-interface OldAccount { email: string; password: string; google_password: string }
 interface PlatformAccount { id: number; login: string; needs_verification: boolean; note: string | null; password: string | null; google_password: string | null }
 
-function AccountBlock({ a, old }: { a: PlatformAccount; old: OldAccount[] }) {
+function AccountBlock({ a, old }: { a: PlatformAccount; old: string[] }) {
+  // 老账号的密码：按邮箱去已录入的账号里查
+  const [found, setFound] = useState<Record<string, { password: string | null; google_password: string | null }>>({})
+  const key = old.join(',')
+  useEffect(() => {
+    if (!old.length) { setFound({}); return }
+    supabase.from('platform_accounts').select('login, password, google_password').in('login', old).then(({ data }) => {
+      setFound(Object.fromEntries((data ?? []).map((x) => [String(x.login).toLowerCase(), x])))
+    })
+  }, [key]) // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div className="plat" style={{ display: 'block', marginTop: 12 }}>
       <b>平台账号（Airbnb）</b>
@@ -158,16 +166,20 @@ function AccountBlock({ a, old }: { a: PlatformAccount; old: OldAccount[] }) {
         <dt>登录邮箱</dt><dd>{a.login}<Copy text={a.login} /></dd>
         <dt>Airbnb 密码</dt><dd>{a.password ? <>{a.password}<Copy text={a.password} /></> : '—'}</dd>
         <dt>Google 密码</dt><dd>{a.google_password ? <>{a.google_password}<Copy text={a.google_password} /></> : '—'}</dd>
-        {old.map((o) => (
-          <div key={o.email} style={{ display: 'contents' }}>
-            <dt>老账号</dt>
-            <dd style={{ whiteSpace: 'nowrap' }}>
-              {o.email}<Copy text={o.email} />
-              {o.password && <span className="muted small">　密码 </span>}{o.password && <>{o.password}<Copy text={o.password} /></>}
-              {o.google_password && <><span className="muted small">　Google </span>{o.google_password}<Copy text={o.google_password} /></>}
-            </dd>
-          </div>
-        ))}
+        {old.map((email) => {
+          const f = found[email.toLowerCase()]
+          return (
+            <div key={email} style={{ display: 'contents' }}>
+              <dt>老账号</dt>
+              <dd style={{ whiteSpace: 'nowrap' }}>
+                {email}<Copy text={email} />
+                {f?.password && <><span className="muted small">　密码 </span>{f.password}<Copy text={f.password} /></>}
+                {f?.google_password && f.google_password !== f.password && <><span className="muted small">　Google </span>{f.google_password}<Copy text={f.google_password} /></>}
+                {!f && <span className="muted small">　（没有找到这个账号的密码）</span>}
+              </dd>
+            </div>
+          )
+        })}
       </dl>
     </div>
   )
@@ -212,7 +224,7 @@ function Detail({ row: r, canEdit, onEdit }: { row: Row; canEdit: boolean; onEdi
         <div className="plat"><b>Airbnb</b>{r.airbnb_url ? <a href={r.airbnb_url.startsWith('http') ? r.airbnb_url : `https://${r.airbnb_url}`} target="_blank" rel="noreferrer">打开房源页</a> : <span className="muted">还没填链接</span>}<span className="muted small">{ratingText('Airbnb', true)}</span></div>
         <div className="plat"><b>Booking</b>{r.booking_url ? <a href={r.booking_url.startsWith('http') ? r.booking_url : `https://${r.booking_url}`} target="_blank" rel="noreferrer">打开房源页</a> : <span className="muted">还没填链接</span>}<span className="muted small">{ratingText('Booking.com', false)}</span></div>
       </div>
-      {r.airbnb_account && <AccountBlock a={r.airbnb_account} old={r.account_info?.old_list?.length ? r.account_info.old_list : (r.account_info?.old_accounts ?? []).map((email) => ({ email, password: '', google_password: '' }))} />}
+      {r.airbnb_account && <AccountBlock a={r.airbnb_account} old={r.account_info?.old_accounts ?? []} />}
       {st === '待登记合同' && <p className="warn">水电燃气网络和合同到期日填完整后，房源才算“运营中”。</p>}
     </section>
   )

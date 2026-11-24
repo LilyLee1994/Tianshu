@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { CopyVal } from '../lib/Copy'
 
 interface Company { id: number; reference: string; account: string; password: string | null; note: string | null; extra: string | null }
-interface Plat { id: number; platform: string; login: string; password: string | null; google_password: string | null; needs_verification: boolean; note: string | null; properties: { name: string }[] }
+interface Plat { id: number; status: string; platform: string; login: string; password: string | null; google_password: string | null; needs_verification: boolean; note: string | null; properties: { name: string }[] }
 
 export default function Vault() {
   const [tab, setTab] = useState<'company' | 'platform'>('company')
@@ -13,6 +13,7 @@ export default function Vault() {
   const [msg, setMsg] = useState('')
   const [editC, setEditC] = useState<Partial<Company> | null>(null)
   const [editP, setEditP] = useState<Plat | null>(null)
+  const [showOff, setShowOff] = useState(false)
   const [open, setOpen] = useState<Set<string>>(new Set())
   const flip = (k: string) => setOpen((o) => { const n = new Set(o); if (n.has(k)) n.delete(k); else n.add(k); return n })
   const Ell = ({ k, text }: { k: string; text: string | null }) => (text ? <div className={open.has(k) ? 'cell-ell open' : 'cell-ell'} title={open.has(k) ? '点一下收起' : text} onClick={() => flip(k)}>{text}</div> : null)
@@ -20,7 +21,7 @@ export default function Vault() {
   const load = useCallback(async () => {
     const [c, p] = await Promise.all([
       supabase.from('company_accounts').select('*').order('id').limit(1000),
-      supabase.from('platform_accounts').select('id, platform, login, password, google_password, needs_verification, note, properties:properties!airbnb_account_id(name)').order('login').limit(1000),
+      supabase.from('platform_accounts').select('id, status, platform, login, password, google_password, needs_verification, note, properties:properties!airbnb_account_id(name)').order('login').limit(1000),
     ])
     if (c.error) setMsg(`读取出错：${c.error.message}`)
     setCompany((c.data ?? []) as never); setPlat((p.data ?? []) as never)
@@ -29,7 +30,7 @@ export default function Vault() {
 
   const has = (s: unknown) => String(s ?? '').toLowerCase().includes(q.toLowerCase())
   const cShown = useMemo(() => company.filter((r) => !q || [r.reference, r.account, r.note, r.extra].some(has)), [company, q]) // eslint-disable-line react-hooks/exhaustive-deps
-  const pShown = useMemo(() => plat.filter((r) => !q || has(r.login) || has(r.note) || r.properties.some((x) => has(x.name))), [plat, q]) // eslint-disable-line react-hooks/exhaustive-deps
+  const pShown = useMemo(() => plat.filter((r) => (showOff || r.status !== '已下线') && (!q || has(r.login) || has(r.note) || r.properties.some((x) => has(x.name)))), [plat, q, showOff]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const saveC = async (r: Partial<Company>) => {
     const row = { reference: (r.reference ?? '').trim(), account: (r.account ?? '').trim(), password: r.password?.trim() || null, note: r.note?.trim() || null, extra: r.extra?.trim() || null }
@@ -54,8 +55,9 @@ export default function Vault() {
       <p className="muted small">只有管理员能看到这一页。这里是公司通用账号和所有 Airbnb 平台账号，明文显示，点复制即可。助理在自己房源的档案里能看到该房源的平台账号。</p>
       <div className="btn-row" style={{ marginBottom: 12 }}>
         <button className={tab === 'company' ? 'pill on' : 'pill'} onClick={() => setTab('company')}>公司通用账号（{company.length}）</button>
-        <button className={tab === 'platform' ? 'pill on' : 'pill'} onClick={() => setTab('platform')}>Airbnb 平台账号（{plat.length}）</button>
+        <button className={tab === 'platform' ? 'pill on' : 'pill'} onClick={() => setTab('platform')}>Airbnb 平台账号（{plat.filter((r) => r.status !== '已下线').length}）</button>
         <input placeholder="搜索" value={q} onChange={(e) => setQ(e.target.value)} />
+        {tab === 'platform' && <label className="small" style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}><input type="checkbox" checked={showOff} onChange={(e) => setShowOff(e.target.checked)} />显示已下线（{plat.filter((r) => r.status === '已下线').length}）</label>}
       </div>
       {msg && <p className="muted">{msg}</p>}
 
