@@ -4,7 +4,7 @@ import { useAuth } from '../lib/auth'
 import { coveredAssistantIds } from '../lib/cover'
 import { fmtAt } from '../lib/History'
 
-interface Alert { reservation_id: number; kind: string; detail: string; status: string; note: string | null; created_at: string; handled_at: string | null; handler: { name: string } | null; property: { name: string; assistant_id: string | null } | null; reservation: { guest_name: string | null; channel_name: string | null } | null }
+interface Alert { reservation_id: number; kind: string; detail: string; status: string; note: string | null; created_at: string; handled_at: string | null; handler: { name: string } | null; property: { name: string; assistant_id: string | null; assistant: { name: string } | null } | null; reservation: { guest_name: string | null; channel_name: string | null } | null }
 
 // 新订单的清洁费或房费和这个房源平时差太多时的提醒。负责人看过订单没问题（或处理完）后点“已处理”。
 export default function Alerts() {
@@ -18,7 +18,7 @@ export default function Alerts() {
   useEffect(() => { if (isAssistant && profile) coveredAssistantIds(profile.id).then(setCover); else setCover(new Set()) }, [profile?.id, isAssistant]) // eslint-disable-line react-hooks/exhaustive-deps
   const load = useCallback(async () => {
     const { data, error } = await supabase.from('order_alerts')
-      .select('reservation_id, kind, detail, status, note, created_at, handled_at, handler:profiles!handled_by(name), property:properties(name, assistant_id), reservation:reservations(guest_name, channel_name)')
+      .select('reservation_id, kind, detail, status, note, created_at, handled_at, handler:profiles!handled_by(name), property:properties(name, assistant_id, assistant:profiles!assistant_id(name)), reservation:reservations(guest_name, channel_name)')
       .order('created_at', { ascending: false }).limit(500)
     if (error) setMsg(`读取出错：${error.message}（是否已运行 031 迁移？）`)
     setRows((data ?? []) as never)
@@ -47,10 +47,10 @@ export default function Alerts() {
       {msg && <p className="muted">{msg}</p>}
       <div className="table-wrap">
         <table className="tight" style={{ width: 'auto', minWidth: 0 }}>
-          <thead><tr><th>房源</th><th>类型</th><th>情况</th><th>客人</th><th>提醒时间</th>{done && <th>处理</th>}<th></th></tr></thead>
+          <thead><tr><th>房源</th><th>负责人</th><th>类型</th><th>情况</th><th>客人</th><th>提醒时间</th>{done && <th>处理</th>}<th></th></tr></thead>
           <tbody>{shown.map((r) => (
             <tr key={`${r.reservation_id}${r.kind}`}>
-              <td><b>{r.property?.name}</b></td><td><span className="chip amber">{r.kind}</span></td>
+              <td><b>{r.property?.name}</b></td><td>{r.property?.assistant?.name ?? <span className="muted">未分配</span>}</td><td><span className="chip amber">{r.kind}</span></td>
               <td className="small">{r.detail}</td><td className="small">{r.reservation?.guest_name ?? '—'}</td>
               <td className="muted small">{fmtAt(r.created_at)}</td>
               {done && <td className="small">{r.handler?.name ?? '—'}{r.note ? `：${r.note}` : ''}</td>}
