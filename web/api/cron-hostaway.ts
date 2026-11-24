@@ -45,7 +45,8 @@ export default async function handler(req: Req, res: Res) {
     if (isCron) return res.status(200).json({ done: true, summary: (run.summary as State).counts })
     const prev = run.summary as State
     const feeChanges = await syncGuestCleaningFee(db, today)  // 清洁费跟 Hostaway 走，手动点也顺便更新一次
-    const redo: State = { ...prev, phase: 'calendar', calOffset: 0, failed: [], counts: { ...prev.counts, calendarRows: 0, cleaningFeeChanges: feeChanges } }
+    const alertsNew = await detectOrderAlerts(db, today)
+    const redo: State = { ...prev, phase: 'calendar', calOffset: 0, failed: [], counts: { ...prev.counts, calendarRows: 0, cleaningFeeChanges: feeChanges, orderAlerts: alertsNew } }
     await db.from('sync_runs').update({ summary: redo, ok: null, finished_at: null }).eq('id', run.id)
     run = { ...run, ok: null, summary: redo }
   }
@@ -96,6 +97,7 @@ export default async function handler(req: Req, res: Res) {
     if (st.phase === 'cleaning') {
       st.counts.autoCleaning = await autoCleaning(db, today)
       st.counts.cleaningFeeChanges = await syncGuestCleaningFee(db, today)
+      st.counts.orderAlerts = await detectOrderAlerts(db, today)
       st.phase = 'reviews'; await save()
     }
 
@@ -176,6 +178,44 @@ async function syncGuestCleaningFee(db: ReturnType<typeof adminClient>, today: s
     .map(([pid, fee]) => ({ property_id: pid, guest_fee: fee, effective_date: today }))
   if (rows.length) { const { error } = await db.from('cleaning_fees').upsert(rows, { onConflict: 'property_id,effective_date' }); if (error) return `出错：${error.message}` }
   return rows.length
+}
+
+// 订单异常：新下的订单（近 7 天下单），清洁费或房费和这个房源平时差太多，就记一条提醒给负责人。
+// 对比的是这个房源近 180 天的订单（不含这一单、不含 28 晚以上的长单），至少要有 5 单才判断。
+const ALERT = { minHistory: 5, cleanTol: 1, cleanShare: 0.6, rateLow: 0.5, rateHigh: 2.5, longStay: 28 }
+const median = (a: number[]) => { const s = [...a].sort((x, y) => x - y); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2 }
+async function detectOrderAlerts(db: ReturnType<typeof adminClient>, today: string) {
+  const { data: rs } = await db.from('reservations').select('id, property_id, channel_name, status, nights, total_price, cleaning_fee, arrival_date, reserved_at').not('property_id', 'is', null).gte('arrival_date', addDays(today, -180)).limit(10000)
+  const act = (rs ?? []).filter((r) => active(r.status))
+  const { data: pr } = await db.from('properties').select('id, cleaning_by')
+  const ownerCleans = new Set((pr ?? []).filter((p) => p.cleaning_by === '房东自己').map((p) => p.id as number))
+  const byProp = new Map<number, typeof act>()
+  for (const r of act) (byProp.get(r.property_id as number) ?? byProp.set(r.property_id as number, []).get(r.property_id as number)!).push(r)
+  const since = addDays(today, -7)
+  const out: { reservation_id: number; kind: string; property_id: number; detail: string }[] = []
+  for (const c of act) {
+    if (!(c.reserved_at ? String(c.reserved_at).slice(0, 10) >= since : c.arrival_date >= today)) continue
+    const pid = c.property_id as number
+    const hist = (byProp.get(pid) ?? []).filter((h) => h.id !== c.id && (Number(h.nights) || 0) < ALERT.longStay && Number(h.total_price) > 0)
+    if (hist.length < ALERT.minHistory) continue
+    const fee = Number(c.cleaning_fee) || 0, total = Number(c.total_price) || 0, nights = Number(c.nights) || 0
+    const label = `${c.channel_name ?? ''} 入住 ${c.arrival_date}`.trim()
+    if (!ownerCleans.has(pid)) {
+      const cnt = new Map<number, number>()
+      for (const h of hist) { const v = Math.round(Number(h.cleaning_fee) || 0); cnt.set(v, (cnt.get(v) ?? 0) + 1) }
+      const [mode, n] = [...cnt.entries()].sort((a, b) => b[1] - a[1])[0]
+      if (mode > 0 && n / hist.length >= ALERT.cleanShare && Math.abs(fee - mode) >= ALERT.cleanTol) out.push({ reservation_id: c.id as number, kind: '清洁费', property_id: pid, detail: `${label}：清洁费 $${fee}，这个房源平时是 $${mode}` })
+    }
+    if (total <= 0) out.push({ reservation_id: c.id as number, kind: '房费', property_id: pid, detail: `${label}：订单总价是 0` })
+    else if (nights >= 1 && nights < ALERT.longStay) {
+      const nightly = (total - fee) / nights
+      const med = median(hist.map((h) => (Number(h.total_price) - (Number(h.cleaning_fee) || 0)) / (Number(h.nights) || 1)))
+      if (med > 0 && nightly < med * ALERT.rateLow) out.push({ reservation_id: c.id as number, kind: '房费', property_id: pid, detail: `${label}：每晚均价 $${nightly.toFixed(0)}，只有平时（约 $${med.toFixed(0)}）的 ${Math.round((nightly / med) * 100)}%` })
+      else if (med > 0 && nightly > med * ALERT.rateHigh) out.push({ reservation_id: c.id as number, kind: '房费', property_id: pid, detail: `${label}：每晚均价 $${nightly.toFixed(0)}，是平时（约 $${med.toFixed(0)}）的 ${(nightly / med).toFixed(1)} 倍` })
+    }
+  }
+  if (out.length) { const { error } = await db.from('order_alerts').upsert(out, { onConflict: 'reservation_id,kind', ignoreDuplicates: true }); if (error) return `出错：${error.message}` }
+  return out.length
 }
 
 // 自动派清洁：今天和明天退房的订单，各生成一张清洁单。

@@ -32,9 +32,10 @@ export default function Dashboard() {
       supabase.from('review_actions').select('review_id, status').limit(5000),
       supabase.from('claims').select('content, property:properties(name, assistant_id)').eq('status', '待提交').limit(50),
       profile?.role === 'assistant' ? supabase.from('shift_months').select('status').eq('user_id', profile.id).eq('month', `${openMonth()}-01`).maybeSingle() : Promise.resolve({ data: null }),
+      supabase.from('order_alerts').select('kind, detail, property:properties(name, assistant_id)').eq('status', '待处理').limit(200),
       profile?.role === 'admin' ? supabase.from('shift_requests').select('month, reason, user:profiles!shift_requests_user_id_fkey(name)').eq('status', '待审批').limit(50) : Promise.resolve({ data: [] }),
           profile?.role === 'assistant' ? coveredAssistantIds(profile.id) : Promise.resolve(new Set<string>()),
-    ]).then(([o, p, rv, ra, cl, sm, sr, cov]) => {
+    ]).then(([o, p, rv, ra, cl, sm, oa, sr, cov]) => {
       const mine = (aid: string | null | undefined) => profile?.role !== 'assistant' || (!!aid && cov.has(aid))
       const tagOf = (aid: string | null | undefined) => (profile?.role === 'assistant' && aid && aid !== profile.id ? '（代班）' : '')
       const t: Todo[] = []
@@ -43,6 +44,7 @@ export default function Dashboard() {
         t.push({ tag: '排班', text: isNext ? `${om} 的排班已开放（每月 ${OPEN_DAY} 号开放），请选好 4 天休息、4 天居家办公并提交` : `${om} 的排班还没提交，请选好 4 天休息、4 天居家办公并提交`, to: '/shifts', cls: 'amber' })
       }
       for (const r of (sr.data ?? []) as unknown as { month: string; reason: string | null; user: { name: string } | null }[]) t.push({ tag: '排班', text: `${r.user?.name ?? '助理'} 申请变更 ${r.month.slice(0, 7)} 的排班：${r.reason || '（没写原因）'}`, to: '/shifts', cls: 'blue' })
+      for (const a of (oa.data ?? []) as unknown as { kind: string; detail: string; property: { name: string; assistant_id: string | null } | null }[]) if (mine(a.property?.assistant_id)) t.push({ tag: '订单异常', text: `${tagOf(a.property?.assistant_id)}${a.property?.name} · ${a.kind}：${a.detail}`, to: '/alerts', cls: 'purple' })
       let pending = 0, doing = 0
       for (const x of (o.data ?? []) as unknown as { status: string; type: string; description: string; property: { name: string } }[]) {
         const label = `${x.property?.name} · ${x.type} · ${x.description ?? ''}`
