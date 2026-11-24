@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 import { callApi } from '../lib/api'
 
 interface Row { duty: string; property: string; login: string; pw: string; gpw: string; verify: string; other: string }
-interface Merged { login: string; pw: string; gpw: string; verify: string; other: string[] }
+interface Merged { login: string; pw: string; gpw: string; verify: string }
 
 const t = (v: unknown) => String(v ?? '').trim()
 // 初始密码：和账号名一样；不足 8 位（系统最低要求）时补数字
@@ -22,10 +22,7 @@ function parse(wb: XLSX.WorkBook): Row[] {
       if (!property) continue
       const col3 = t(c[3])
       const isMail = col3.includes('@')
-      const other = [
-        !isMail && col3 ? `账号栏：${col3}` : '', t(c[7]) && `旧帐号：${t(c[7])}`, t(c[8]) && `Vrbo：${t(c[8])}`, t(c[9]) && `Booking：${t(c[9])}`, t(c[10]) && `备注：${t(c[10])}`,
-        ...c.slice(11, 17).map((x) => (t(x) ? `补充：${t(x)}` : '')),
-      ].filter(Boolean).join('\n')
+      const other = [!isMail && col3 ? col3 : '', ...c.slice(7, 17).map(t)].filter(Boolean).join('  ｜  ')
       out.push({ duty: t(c[0]), property, login: isMail ? col3.toLowerCase() : '', pw: t(c[4]), gpw: t(c[5]), verify: t(c[6]), other })
     }
   }
@@ -87,16 +84,15 @@ export default function ImportAccounts() {
     const merged = new Map<string, Merged>()
     for (const r of rows) {
       if (!r.login) continue
-      const m = merged.get(r.login) ?? { login: r.login, pw: '', gpw: '', verify: '', other: [] }
+      const m = merged.get(r.login) ?? { login: r.login, pw: '', gpw: '', verify: '' }
       m.pw ||= r.pw; m.gpw ||= r.gpw; m.verify ||= r.verify
-      if (r.other) for (const l of r.other.split('\n')) if (!m.other.includes(l)) m.other.push(l)
       merged.set(r.login, m)
     }
     const ids = new Map<string, number>()
     for (const m of merged.values()) {
       const { data, error } = await supabase.from('platform_accounts').upsert({
         platform: 'Airbnb', login: m.login, password: m.pw || null, google_password: m.gpw || null,
-        needs_verification: !!m.verify, note: m.verify ? `需要验证：${m.verify}` : null, other_info: m.other.join('\n') || null,
+        needs_verification: !!m.verify, note: m.verify ? `需要验证：${m.verify}` : null, other_info: null,
       }, { onConflict: 'platform,login' }).select('id').single()
       if (error || !data) { setLog([`写入账号 ${m.login} 失败：${error?.message}`]); setBusy(false); return }
       ids.set(m.login, data.id as number)
@@ -115,6 +111,10 @@ export default function ImportAccounts() {
       if (Object.keys(patch).length) {
         const { error } = await supabase.from('properties').update(patch).eq('id', p.id)
         if (error) { setLog([`更新房源 ${r.property} 失败：${error.message}`]); setBusy(false); return }
+      }
+      if (r.other) {
+        const { error } = await supabase.from('property_account_info').upsert({ property_id: p.id, raw: r.other }, { onConflict: 'property_id' })
+        if (error) { setLog([`保存 ${r.property} 的原表备注失败：${error.message}`]); setBusy(false); return }
       }
     }
     setDone({ accounts: merged.size, linked, assigned, unmatched: [...new Set(unmatched)] })
@@ -155,7 +155,7 @@ export default function ImportAccounts() {
       {rows.length > 0 && (
         <section className="card" style={{ marginBottom: 16 }}>
           <h3 style={{ marginTop: 0 }}>3. 导入账号并分配房源</h3>
-          <p className="muted small">按房源名称匹配：把 Airbnb 账号（邮箱、密码、Google 密码、旧账号等其他文字）挂到房源上；还没有负责助理的房源，按 Duty 分配。已经有负责人的不会改。可以重复点，不会重复建账号。</p>
+          <p className="muted small">按房源名称匹配：把 Airbnb 账号（邮箱、密码、Google 密码）挂到房源上，并把每个房源在原表里那一行后面的内容（旧账号、Vrbo、Booking、备注等）原样存下来；还没有负责助理的房源，按 Duty 分配。已经有负责人的不会改。可以重复点，不会重复建账号。</p>
           <div className="btn-row"><button disabled={busy || missing.length > 0} onClick={importAll}>{busy ? '导入中…' : '开始导入'}</button>{missing.length > 0 && <span className="muted small">先完成第 2 步创建助理账号</span>}</div>
           {done && (
             <div style={{ marginTop: 12 }}>
