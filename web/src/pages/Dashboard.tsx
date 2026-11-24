@@ -29,8 +29,10 @@ export default function Dashboard() {
       supabase.from('reviews').select('id, channel_name, rating, reviewed_at, property:properties(name, assistant_id)').not('rating', 'is', null).gte('reviewed_at', new Date(Date.now() - 14 * 86400_000).toISOString()).order('reviewed_at', { ascending: false }).limit(500),
       supabase.from('review_actions').select('review_id, status').limit(5000),
       supabase.from('claims').select('content, property:properties(name, assistant_id)').eq('status', '待提交').limit(50),
-    ]).then(([o, p, rv, ra, cl]) => {
+      profile?.role === 'admin' ? supabase.from('shift_requests').select('month, reason, user:profiles!shift_requests_user_id_fkey(name)').eq('status', '待审批').limit(50) : Promise.resolve({ data: [] }),
+    ]).then(([o, p, rv, ra, cl, sr]) => {
       const t: Todo[] = []
+      for (const r of (sr.data ?? []) as unknown as { month: string; reason: string | null; user: { name: string } | null }[]) t.push({ tag: '排班', text: `${r.user?.name ?? '助理'} 申请变更 ${r.month.slice(0, 7)} 的排班：${r.reason || '（没写原因）'}`, to: '/shifts', cls: 'blue' })
       let pending = 0, doing = 0
       for (const x of (o.data ?? []) as unknown as { status: string; type: string; description: string; property: { name: string } }[]) {
         const label = `${x.property?.name} · ${x.type} · ${x.description ?? ''}`
