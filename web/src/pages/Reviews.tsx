@@ -20,7 +20,6 @@ type Rev = { id: number; property_id: number; channel_name: string | null; ratin
 export default function Reviews() {
   const { profile } = useAuth()
   const isAssistant = profile?.role === 'assistant'
-  const [scope, setScope] = useState<'mine' | 'all'>(isAssistant ? 'mine' : 'all')
   const [days, setDays] = useState(7)
   const [props, setProps] = useState<Prop[]>([])
   const [stats, setStats] = useState<Stat[]>([])
@@ -47,7 +46,7 @@ export default function Reviews() {
   const visible = (pid: number) => {
     const p = pById.get(pid)
     if (!p) return false
-    return !(isAssistant && scope === 'mine') || p.assistant_id === profile?.id
+    return !isAssistant || p.assistant_id === profile?.id
   }
 
   const bad = revs.filter((r) => badOne(r.channel_name, Number(r.rating)) && visible(r.property_id))
@@ -64,7 +63,7 @@ export default function Reviews() {
       .map(([pid, e]) => ({ p: pById.get(pid), e }))
       .filter((x) => x.p && !INACTIVE.test(x.p.name) && visible(x.p.id) && ((x.e.a && lowAvg('Airbnb', Number(x.e.a.avg_rating))) || (x.e.b && lowAvg('Booking.com', Number(x.e.b.avg_rating)))))
       .sort((x, y) => (Number(x.e.a?.avg_rating ?? 99) / 2) - (Number(y.e.a?.avg_rating ?? 99) / 2))
-  }, [stats, pById, scope, profile]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [stats, pById, profile]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const cellOf = (s: Stat | undefined) => {
     if (!s) return <span className="muted">暂无评价</span>
@@ -75,12 +74,6 @@ export default function Reviews() {
   return (
     <div>
       <h1>差评</h1>
-      {isAssistant && (
-        <div className="btn-row" style={{ marginBottom: 12 }}>
-          <button className={scope === 'mine' ? 'pill on' : 'pill'} onClick={() => setScope('mine')}>自己的房源</button>
-          <button className={scope === 'all' ? 'pill on' : 'pill'} onClick={() => setScope('all')}>全部房源</button>
-        </div>
-      )}
       {err && <p className="error">读取出错：{err}</p>}
 
       <section className="card" style={{ marginBottom: 16 }}>
