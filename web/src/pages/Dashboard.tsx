@@ -28,7 +28,7 @@ export default function Dashboard() {
       supabase.from('properties').select('name, property_contracts(*)').eq('legacy', false),
       supabase.from('reviews').select('id, channel_name, rating, reviewed_at, property:properties(name, assistant_id)').not('rating', 'is', null).gte('reviewed_at', new Date(Date.now() - 14 * 86400_000).toISOString()).order('reviewed_at', { ascending: false }).limit(500),
       supabase.from('review_actions').select('review_id, status').limit(5000),
-      supabase.from('claims').select('content, property:properties(name)').eq('status', '待提交').limit(50),
+      supabase.from('claims').select('content, property:properties(name, assistant_id)').eq('status', '待提交').limit(50),
     ]).then(([o, p, rv, ra, cl]) => {
       const t: Todo[] = []
       let pending = 0, doing = 0
@@ -52,7 +52,7 @@ export default function Dashboard() {
         if (profile?.role === 'assistant' && r.property?.assistant_id !== profile.id) continue
         if (badOne(r.channel_name, Number(r.rating)) && !done.has(r.id)) t.push({ tag: '差评', text: `${r.property?.name} · ${r.channel_name} ${r.channel_name === 'Airbnb' ? Number(r.rating) / 2 + ' 星' : r.rating + ' 分'} · ${r.reviewed_at.slice(0, 10)}`, to: '/reviews', cls: 'purple' })
       }
-      for (const c of (cl.data ?? []) as unknown as { content: string; property: { name: string } }[]) t.push({ tag: '索赔', text: `${c.property?.name} · ${c.content}，还没提交平台`, to: '/claims', cls: 'amber' })
+      for (const c of (cl.data ?? []) as unknown as { content: string; property: { name: string; assistant_id: string | null } }[]) if (profile?.role !== 'assistant' || c.property?.assistant_id === profile.id) t.push({ tag: '索赔', text: `${c.property?.name} · ${c.content}，还没提交平台`, to: '/claims', cls: 'amber' })
       setTodos(t); setStats({ pending, doing, incomplete }); setLoading(false)
     })
   }, [])

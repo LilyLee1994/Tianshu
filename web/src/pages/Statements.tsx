@@ -21,7 +21,6 @@ export default function Statements() {
   const [month, setMonth] = useState(lastMonth())
   const [rows, setRows] = useState<St[]>([])
   const [q, setQ] = useState('')
-  const [mine, setMine] = useState(isAssistant)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
   const [adj, setAdj] = useState<St | null>(null)
@@ -37,9 +36,9 @@ export default function Statements() {
 
   const shown = useMemo(() => rows.filter((r) => {
     if (q && !r.property?.name.toLowerCase().includes(q.toLowerCase())) return false
-    if (mine && (r.property as never as { assistant_id: string | null })?.assistant_id !== profile?.id) return false
+    if (isAssistant && (r.property as never as { assistant_id: string | null })?.assistant_id !== profile?.id) return false
     return true
-  }), [rows, q, mine, profile])
+  }), [rows, q, isAssistant, profile])
 
   const total = useMemo(() => shown.reduce((a, r) => ({
     rental: a.rental + Number(r.rental_income), comm: a.comm + Number(r.commission), plat: a.plat + Number(r.platform_fee), gst: a.gst + Number(r.gst),
@@ -70,10 +69,6 @@ export default function Statements() {
       <div className="btn-row" style={{ marginBottom: 12 }}>
         <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
         <input placeholder="搜索房源" value={q} onChange={(e) => setQ(e.target.value)} />
-        {isAssistant && <>
-          <button className={mine ? 'pill on' : 'pill'} onClick={() => setMine(true)}>自己的房源</button>
-          <button className={!mine ? 'pill on' : 'pill'} onClick={() => setMine(false)}>全部房源</button>
-        </>}
         {canEdit && <button disabled={busy} onClick={() => act({ action: 'generate', month }, '')}>{busy ? '生成中…' : rows.length ? '重新计算草稿' : '生成这个月的草稿'}</button>}
         <button className="ghost" onClick={exportCsv} disabled={!shown.length}>导出 CSV</button>
       </div>

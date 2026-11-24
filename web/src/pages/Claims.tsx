@@ -11,7 +11,7 @@ const chip = (s: string) => (s === '已赔付' ? 'chip green' : s === '被驳回
 interface Claim {
   id: number; property_id: number; platform: string; occurred_date: string; content: string; claimed_amount: number | null
   status: (typeof STATUSES)[number]; paid_amount: number | null; paid_date: string | null; photos: string[]
-  property: { name: string } | null; creator: { name: string } | null; created_by: string | null
+  property: { name: string; assistant_id: string | null } | null; creator: { name: string } | null; created_by: string | null
 }
 interface Prop { id: number; name: string; assistant_id: string | null }
 
@@ -20,7 +20,6 @@ export default function Claims() {
   const isAssistant = profile?.role === 'assistant'
   const [rows, setRows] = useState<Claim[]>([])
   const [props, setProps] = useState<Prop[]>([])
-  const [mine, setMine] = useState(isAssistant)
   const [status, setStatus] = useState('')
   const [q, setQ] = useState('')
   const [adding, setAdding] = useState(false)
@@ -30,7 +29,7 @@ export default function Claims() {
 
   const load = useCallback(async () => {
     const [c, p] = await Promise.all([
-      supabase.from('claims').select('*, property:properties(name), creator:profiles!created_by(name)').order('occurred_date', { ascending: false }).order('id', { ascending: false }).limit(1000),
+      supabase.from('claims').select('*, property:properties(name, assistant_id), creator:profiles!created_by(name)').order('occurred_date', { ascending: false }).order('id', { ascending: false }).limit(1000),
       supabase.from('properties').select('id, name, assistant_id').order('name'),
     ])
     if (c.error) setMsg(`读取出错：${c.error.message}`)
@@ -39,11 +38,11 @@ export default function Claims() {
   useEffect(() => { load() }, [load])
 
   const shown = useMemo(() => rows.filter((r) => {
-    if (mine && r.created_by !== profile?.id) return false
+    if (isAssistant && r.property?.assistant_id !== profile?.id) return false
     if (status && r.status !== status) return false
     if (q && !`${r.property?.name} ${r.content}`.toLowerCase().includes(q.toLowerCase())) return false
     return true
-  }), [rows, mine, status, q, profile])
+  }), [rows, isAssistant, status, q, profile])
 
   const open = shown.filter((r) => ['待提交', '已提交平台', '平台处理中'].includes(r.status)).length
   const paid = shown.filter((r) => r.status === '已赔付').reduce((a, r) => a + Number(r.paid_amount ?? 0), 0)
@@ -53,10 +52,6 @@ export default function Claims() {
       <div className="title-row"><h1>索赔</h1><button onClick={() => setAdding(true)}>+ 新增索赔</button></div>
       <p className="muted small">客服在平台上发起索赔后，在这里记一条；跟进人定期查看平台结果，更新状态并填到账金额。<b>已赔付的到账金额会自动进当月房东结算</b>，被驳回或放弃的不进。</p>
       <div className="btn-row" style={{ marginBottom: 12 }}>
-        {isAssistant && <>
-          <button className={mine ? 'pill on' : 'pill'} onClick={() => setMine(true)}>我发起的</button>
-          <button className={!mine ? 'pill on' : 'pill'} onClick={() => setMine(false)}>全部</button>
-        </>}
         <select value={status} onChange={(e) => setStatus(e.target.value)}>
           <option value="">全部状态</option>{STATUSES.map((s) => <option key={s}>{s}</option>)}
         </select>
@@ -83,7 +78,7 @@ export default function Claims() {
         {!shown.length && <p className="muted pad">还没有索赔记录。</p>}
       </div>
 
-      {adding && <AddModal props={props} me={profile?.id ?? ''} onClose={() => setAdding(false)} onSaved={() => { setAdding(false); setMsg('已登记。'); load() }} />}
+      {adding && <AddModal props={isAssistant ? props.filter((x) => x.assistant_id === profile?.id) : props} me={profile?.id ?? ''} onClose={() => setAdding(false)} onSaved={() => { setAdding(false); setMsg('已登记。'); load() }} />}
       {upd && <UpdateModal row={upd} onClose={() => setUpd(null)} onSaved={() => { setUpd(null); setMsg('已更新。'); load() }} />}
       {pics && (
         <div className="modal-bg" onClick={() => setPics(null)}>
