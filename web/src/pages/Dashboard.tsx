@@ -7,6 +7,7 @@ import { startSync, useSync } from '../lib/syncStore'
 import { statusOf } from './Properties'
 import { daysTo } from './Contracts'
 import { badOne } from './Reviews'
+import { openMonth, OPEN_DAY } from './Shifts'
 
 interface Todo { tag: string; text: string; to: string; cls: string }
 
@@ -29,9 +30,14 @@ export default function Dashboard() {
       supabase.from('reviews').select('id, channel_name, rating, reviewed_at, property:properties(name, assistant_id)').not('rating', 'is', null).gte('reviewed_at', new Date(Date.now() - 14 * 86400_000).toISOString()).order('reviewed_at', { ascending: false }).limit(500),
       supabase.from('review_actions').select('review_id, status').limit(5000),
       supabase.from('claims').select('content, property:properties(name, assistant_id)').eq('status', '待提交').limit(50),
+      profile?.role === 'assistant' ? supabase.from('shift_months').select('status').eq('user_id', profile.id).eq('month', `${openMonth()}-01`).maybeSingle() : Promise.resolve({ data: null }),
       profile?.role === 'admin' ? supabase.from('shift_requests').select('month, reason, user:profiles!shift_requests_user_id_fkey(name)').eq('status', '待审批').limit(50) : Promise.resolve({ data: [] }),
-    ]).then(([o, p, rv, ra, cl, sr]) => {
+    ]).then(([o, p, rv, ra, cl, sm, sr]) => {
       const t: Todo[] = []
+      if (profile?.role === 'assistant' && (sm.data as { status?: string } | null)?.status !== '已提交') {
+        const om = openMonth(), isNext = new Date().toLocaleDateString('en-CA', { timeZone: 'Australia/Sydney' }).slice(0, 7) !== om
+        t.push({ tag: '排班', text: isNext ? `${om} 的排班已开放（每月 ${OPEN_DAY} 号开放），请选好 4 天休息、4 天居家办公并提交` : `${om} 的排班还没提交，请选好 4 天休息、4 天居家办公并提交`, to: '/shifts', cls: 'amber' })
+      }
       for (const r of (sr.data ?? []) as unknown as { month: string; reason: string | null; user: { name: string } | null }[]) t.push({ tag: '排班', text: `${r.user?.name ?? '助理'} 申请变更 ${r.month.slice(0, 7)} 的排班：${r.reason || '（没写原因）'}`, to: '/shifts', cls: 'blue' })
       let pending = 0, doing = 0
       for (const x of (o.data ?? []) as unknown as { status: string; type: string; description: string; property: { name: string } }[]) {

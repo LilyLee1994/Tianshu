@@ -1,5 +1,12 @@
 import { adminClient, authenticate, type Req, type Res } from './_lib.js'
 
+// 每月 27 号（悉尼时间）开放下个月的排班填写；27 号之前只能填当月
+const SYD_OPEN_DAY = 27
+function openMonth(): string {
+  const [y, m, d] = new Intl.DateTimeFormat('en-CA', { timeZone: 'Australia/Sydney' }).format(new Date()).split('-').map(Number)
+  const t = d >= SYD_OPEN_DAY ? (m === 12 ? [y + 1, 1] : [y, m + 1]) : [y, m]
+  return `${t[0]}-${String(t[1]).padStart(2, '0')}`
+}
 const isMonth = (m: unknown) => typeof m === 'string' && /^\d{4}-\d{2}$/.test(m)
 const nextMonth = (m: string) => { const [y, mo] = m.split('-').map(Number); return mo === 12 ? `${y + 1}-01-01` : `${y}-${String(mo + 1).padStart(2, '0')}-01` }
 const inMonth = (d: unknown, m: string) => typeof d === 'string' && d.startsWith(`${m}-`) && !Number.isNaN(Date.parse(d))
@@ -17,6 +24,7 @@ export default async function handler(req: Req, res: Res) {
     if (action === 'submit') {
       if (c.role !== 'assistant') return res.status(403).json({ error: '只有客服助理需要填排班。' })
       if (!isMonth(month)) return res.status(400).json({ error: '月份格式不对。' })
+      if (month > openMonth()) return res.status(400).json({ error: `${month} 的排班要等上个月 ${SYD_OPEN_DAY} 号才开放填写。` })
       const R: string[] = Array.isArray(rest) ? rest : [], H: string[] = Array.isArray(home) ? home : []
       if (![...R, ...H].every((d) => inMonth(d, month))) return res.status(400).json({ error: '有日期不在这个月内。' })
       if (new Set(R).size !== 4 || new Set(H).size !== 4) return res.status(400).json({ error: `必须正好选 4 天休息和 4 天居家办公才能提交（现在是休息 ${new Set(R).size} 天、居家 ${new Set(H).size} 天）。` })

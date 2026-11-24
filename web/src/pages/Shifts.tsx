@@ -8,6 +8,13 @@ interface Member { id: string; name: string; partner_id: string | null; backup_i
 interface Req { id: number; user_id: string; month: string; reason: string | null; status: string }
 
 const pad = (n: number) => String(n).padStart(2, '0')
+// 每月 27 号（悉尼时间）开放下个月；之前只能填当月
+export const OPEN_DAY = 27
+export function openMonth() {
+  const [y, m, d] = new Intl.DateTimeFormat('en-CA', { timeZone: 'Australia/Sydney' }).format(new Date()).split('-').map(Number)
+  const t = d >= OPEN_DAY ? (m === 12 ? [y + 1, 1] : [y, m + 1]) : [y, m]
+  return `${t[0]}-${String(t[1]).padStart(2, '0')}`
+}
 const monthOf = (offset: number) => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() + offset); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}` }
 const daysIn = (m: string) => { const [y, mo] = m.split('-').map(Number); return new Date(y, mo, 0).getDate() }
 const firstDow = (m: string) => { const [y, mo] = m.split('-').map(Number); return (new Date(y, mo - 1, 1).getDay() + 6) % 7 } // 周一 = 0
@@ -20,7 +27,7 @@ export default function Shifts() {
   const { profile } = useAuth()
   const isAssistant = profile?.role === 'assistant'
   const isAdmin = profile?.role === 'admin'
-  const [month, setMonth] = useState(monthOf(1))
+  const [month, setMonth] = useState(openMonth())
   const [team, setTeam] = useState<Member[]>([])
   const [plans, setPlans] = useState<Record<string, Plan>>({})        // 已保存的：用户 → 日 → 类型
   const [status, setStatus] = useState<Record<string, string>>({})     // 用户 → 草稿/已提交
@@ -50,7 +57,8 @@ export default function Shifts() {
 
   const name = (id: string | null) => team.find((t) => t.id === id)?.name ?? '—'
   const me = team.find((t) => t.id === profile?.id)
-  const locked = status[profile?.id ?? ''] === '已提交'
+  const notOpen = month > openMonth()
+  const locked = status[profile?.id ?? ''] === '已提交' || notOpen
   const nRest = Object.values(mine).filter((k) => k === '休息').length
   const nHome = Object.values(mine).filter((k) => k === '居家').length
 
@@ -92,7 +100,7 @@ export default function Shifts() {
         <h1>排班</h1>
         <span className="btn-row" style={{ margin: 0 }}>
           <button className={month === monthOf(0) ? 'pill on' : 'pill'} onClick={() => setMonth(monthOf(0))}>本月</button>
-          <button className={month === monthOf(1) ? 'pill on' : 'pill'} onClick={() => setMonth(monthOf(1))}>下月</button>
+          <button className={month === monthOf(1) ? 'pill on' : 'pill'} onClick={() => setMonth(monthOf(1))}>下月{monthOf(1) > openMonth() ? '（未开放）' : ''}</button>
           <input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} />
         </span>
       </div>
@@ -103,7 +111,7 @@ export default function Shifts() {
         <section className="card" style={{ marginBottom: 16 }}>
           <div className="title-row">
             <h3 style={{ margin: 0 }}>我的排班（{month}）</h3>
-            <span className={locked ? 'chip blue' : 'chip amber'}>{locked ? '已提交，已锁定' : '还没提交'}</span>
+            <span className={locked ? 'chip blue' : 'chip amber'}>{notOpen ? `${OPEN_DAY} 号开放` : locked ? '已提交，已锁定' : '还没提交'}</span>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6, maxWidth: 720, margin: '12px 0' }}>
             {['一', '二', '三', '四', '五', '六', '日'].map((w) => <div key={w} className="muted small" style={{ textAlign: 'center' }}>{w}</div>)}
@@ -138,9 +146,10 @@ export default function Shifts() {
             </div>
           )}
           <div className="btn-row">
+            {notOpen && <span className="muted small">每月 {OPEN_DAY} 号开放填写下个月的排班，现在还不能选，可以先看别人已经提交的安排。</span>}
             {!locked && <button disabled={busy || nRest !== 4 || nHome !== 4} onClick={submit}>{busy ? '提交中…' : '提交并锁定'}</button>}
             {!locked && (nRest !== 4 || nHome !== 4) && <span className="warn small">还差：休息 {Math.max(0, 4 - nRest)} 天、居家办公 {Math.max(0, 4 - nHome)} 天{nRest > 4 ? `；休息多选了 ${nRest - 4} 天` : ''}{nHome > 4 ? `；居家多选了 ${nHome - 4} 天` : ''}</span>}
-            {locked && !myReq && <>
+            {locked && !notOpen && !myReq && <>
               <input placeholder="变更原因" value={reason} onChange={(e) => setReason(e.target.value)} />
               <button className="ghost" disabled={busy} onClick={async () => { if (await act({ action: 'request', month, reason }, '已提交变更申请，等管理员批准。')) setReason('') }}>申请变更</button>
             </>}
