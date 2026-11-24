@@ -4,8 +4,9 @@ import { useAuth } from '../lib/auth'
 import { money, today } from '../lib/ui'
 import * as XLSX from 'xlsx'
 
-interface Fee { id: number; property_id: number; standard_fee: number; deep_fee: number; guest_fee: number; effective_date: string }
-interface Prop { id: number; name: string }
+interface Fee { id: number; property_id: number; standard_fee: number | null; deep_fee: number | null; guest_fee: number | null; effective_date: string }
+interface Prop { id: number; name: string; cleaning_by: string }
+const WHO = (v: string) => (v === '房东自己' ? '房东自己' : 'Alisa')
 
 export default function Fees() {
   const { profile } = useAuth()
@@ -17,7 +18,7 @@ export default function Fees() {
 
   const load = useCallback(async () => {
     const [p, f] = await Promise.all([
-      supabase.from('properties').select('id, name').order('name'),
+      supabase.from('properties').select('id, name, cleaning_by').order('name'),
       supabase.from('cleaning_fees').select('*').order('effective_date', { ascending: false }),
     ])
     if (p.data) setProps(p.data as Prop[])
@@ -30,20 +31,20 @@ export default function Fees() {
   return (
     <div>
       <h1>清洁费</h1>
-      <StandardCheck isAdmin={profile?.role === 'admin'} />
-      <p className="muted">按房源记录付给清洁公司的价格和向客人收取的价格。改价会新增一条生效日期，旧价格保留作历史。{canEdit ? '' : '只有管理员和财务能改价。'}</p>
+      <StandardCheck isAdmin={profile?.role === 'admin'} onChanged={load} />
+      <p className="muted">按房源记录付给 Alisa 的价格和向客人收取的价格；“谁清洁”标为房东自己的，不用付 Alisa。改价会新增一条生效日期，旧价格保留作历史。{canEdit ? '' : '只有管理员和财务能改价。'}</p>
       {msg && <div className="ok">{msg}</div>}
       <div className="table-wrap">
         <table style={{ minWidth: 800 }}>
-          <thead><tr><th>房源</th><th>付清洁公司：普通</th><th>付清洁公司：深度</th><th>向客人收取</th><th>差额（收 − 付普通）</th><th>生效日期</th><th></th></tr></thead>
+          <thead><tr><th>房源</th><th>谁清洁</th><th>付 Alisa</th><th>付 Alisa：深度</th><th>向客人收取</th><th>差额（收 − 付）</th><th>生效日期</th><th></th></tr></thead>
           <tbody>
             {props.map((p) => {
               const f = latest(p.id)
               return (
                 <tr key={p.id}>
-                  <td><b>{p.name}</b></td>
+                  <td><b>{p.name}</b></td><td>{WHO(p.cleaning_by)}</td>
                   <td>{f ? money(f.standard_fee) : '—'}</td><td>{f ? money(f.deep_fee) : '—'}</td><td>{f ? money(f.guest_fee) : '—'}</td>
-                  <td>{f ? money(f.guest_fee - f.standard_fee) : '—'}</td><td>{f?.effective_date ?? '未设置'}</td>
+                  <td>{f && f.guest_fee != null && f.standard_fee != null ? money(f.guest_fee - f.standard_fee) : '—'}</td><td>{f?.effective_date ?? '未设置'}</td>
                   <td>{canEdit && <button className="ghost" onClick={() => setEditing(p)}>{f ? '改价' : '设置'}</button>}</td>
                 </tr>
               )
@@ -62,8 +63,10 @@ function EditFee({ prop, cur, onClose, onSaved }: { prop: Prop; cur?: Fee; onClo
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const save = async () => {
-    const [a, b, c] = [f.std, f.deep, f.guest].map(Number)
-    if ([a, b, c].some((x) => Number.isNaN(x) || x < 0) || !f.std || !f.deep || !f.guest) { setErr('三个价格都要填数字。'); return }
+    const n = (v: string) => (v.trim() === '' ? null : Number(v))
+    const [a, b, c] = [n(f.std), n(f.deep), n(f.guest)]
+    if ([a, b, c].some((x) => x != null && (Number.isNaN(x) || x < 0))) { setErr('价格要填数字。'); return }
+    if (a == null && c == null) { setErr('至少填一个价格。'); return }
     setBusy(true); setErr('')
     const { error } = await supabase.from('cleaning_fees').upsert(
       { property_id: prop.id, standard_fee: a, deep_fee: b, guest_fee: c, effective_date: f.eff },
@@ -76,8 +79,8 @@ function EditFee({ prop, cur, onClose, onSaved }: { prop: Prop; cur?: Fee; onClo
     <div className="modal-bg" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h2>{prop.name} · 清洁费</h2>
-        <label>付清洁公司：普通清洁（$）<input value={f.std} onChange={(e) => setF({ ...f, std: e.target.value })} /></label>
-        <label>付清洁公司：深度清洁（$）<input value={f.deep} onChange={(e) => setF({ ...f, deep: e.target.value })} /></label>
+        <label>付 Alisa：普通清洁（$）<input value={f.std} onChange={(e) => setF({ ...f, std: e.target.value })} /></label>
+        <label>付 Alisa：深度清洁（可不填）（$）<input value={f.deep} onChange={(e) => setF({ ...f, deep: e.target.value })} /></label>
         <label>向客人收取（$）<input value={f.guest} onChange={(e) => setF({ ...f, guest: e.target.value })} /></label>
         <label>生效日期<input type="date" value={f.eff} onChange={(e) => setF({ ...f, eff: e.target.value })} /></label>
         {err && <div className="err">{err}</div>}
@@ -94,7 +97,7 @@ const norm = (x: unknown) => String(x ?? '').toLowerCase().replace(/[^a-z0-9\u4e
 const DEAD = /cancel|declin|expire|inquir|void|reject/i
 const DAYS = 120
 
-function StandardCheck({ isAdmin }: { isAdmin: boolean }) {
+function StandardCheck({ isAdmin, onChanged }: { isAdmin: boolean; onChanged: () => void }) {
   const [props, setProps] = useState<{ id: number; name: string; cleaning_by: string }[]>([])
   const [std, setStd] = useState<Map<number, Std>>(new Map())
   const [res, setRes] = useState<Res[]>([])
@@ -134,10 +137,10 @@ function StandardCheck({ isAdmin }: { isAdmin: boolean }) {
       for (const r of paid) { if (Number(r.cleaning_fee) !== latest) break; since = r.arrival_date }
       const cnt = new Map<number, number>()
       for (const r of list) { const v = Number(r.cleaning_fee) || 0; cnt.set(v, (cnt.get(v) ?? 0) + 1) }
-      const ok = (v: number) => (a != null && Math.abs(v - a) < 0.5) || (l != null && Math.abs(v - l) < 0.5)
+      const ok = (v: number) => a != null && Math.abs(v - a) < 0.5
       const bad = [...cnt.entries()].filter(([v]) => !ok(v)).reduce((n, [, c]) => n + c, 0)
       const actual = [...cnt.entries()].sort((x, y) => y[1] - x[1]).map(([v, c]) => `${v}×${c}`).join('、')
-      const status = a == null && l == null ? '没有标准' : !list.length ? '近期无订单' : bad ? '不一致' : '一致'
+      const status = a == null ? '没有标准' : !list.length ? '近期无订单' : bad ? '不一致' : '一致'
       return { p, a, l, n: list.length, bad, actual, status, latest, since, badList: list.filter((r) => !ok(Number(r.cleaning_fee) || 0)) }
     })
   }, [props, std, res])
@@ -146,15 +149,32 @@ function StandardCheck({ isAdmin }: { isAdmin: boolean }) {
   const nNone = rows.filter((r) => r.status === '没有标准').length
   const shown = rows.filter((r) => (onlyBad ? r.status === '不一致' : true))
 
+  // 把「向客人收取」的标准改成 Hostaway 最近订单的实际清洁费（付 Alisa 的价不动）
   const useHostaway = async (list: { p: { id: number; name: string }; latest: number | null; since: string }[]) => {
     const todo = list.filter((x) => x.latest != null)
-    if (!todo.length || !window.confirm(`把 ${todo.length} 个房源的标准清洁费改成 Hostaway 最近订单的实际金额？AIRBNB 和 ALISA 两个标准都会改成这个数。`)) return
+    if (!todo.length || !window.confirm(`把 ${todo.length} 个房源「向客人收取」的标准清洁费改成 Hostaway 最近订单的实际金额？付 Alisa 的价不会动。`)) return
     setBusy(true); setMsg('')
     for (const x of todo) {
-      const { error } = await supabase.from('property_details').upsert({ property_id: x.p.id, std_clean_airbnb: x.latest, std_clean_alisa: x.latest, std_clean_from: x.since || null }, { onConflict: 'property_id' })
+      const { error } = await supabase.from('property_details').upsert({ property_id: x.p.id, std_clean_airbnb: x.latest, std_clean_from: x.since || null }, { onConflict: 'property_id' })
       if (error) { setMsg(`更新 ${x.p.name} 失败：${error.message}（是否已运行 027 迁移？）`); setBusy(false); return }
+      const e2 = await writeFee(x.p.id, x.latest, std.get(x.p.id)?.std_clean_alisa ?? null)
+      if (e2) { setMsg(`写入清洁费表失败：${e2}（是否已运行 028 迁移？）`); setBusy(false); return }
     }
-    setMsg(`已把 ${todo.length} 个房源改成按 Hostaway 的价格。`); setBusy(false); await load()
+    setMsg(`已把 ${todo.length} 个房源改成按 Hostaway 的价格。`); setBusy(false); await load(); onChanged()
+  }
+
+  // 写进下面的「清洁费」表：向客人收取 = AIRBNB 列，付 Alisa = ALISA 列；今天生效，同一天重复写会覆盖
+  const writeFee = async (pid: number, guest: number | null, alisa: number | null) => {
+    if (guest == null && alisa == null) return ''
+    const { error } = await supabase.from('cleaning_fees').upsert({ property_id: pid, guest_fee: guest, standard_fee: alisa, effective_date: today() }, { onConflict: 'property_id,effective_date' })
+    return error?.message ?? ''
+  }
+  const fillAll = async () => {
+    const todo = rows.filter((r) => r.a != null || r.l != null)
+    if (!window.confirm(`把 ${todo.length} 个房源的标准清洁费填进下面的清洁费表（向客人收取 = AIRBNB 列，付 Alisa = ALISA 列）？`)) return
+    setBusy(true); setMsg('')
+    for (const r of todo) { const e = await writeFee(r.p.id, r.a, r.l); if (e) { setMsg(`写入 ${r.p.name} 失败：${e}（是否已运行 028 迁移？）`); setBusy(false); return } }
+    setMsg(`已填入 ${todo.length} 个房源。`); setBusy(false); onChanged()
   }
 
   const onFile = async (f: File) => {
@@ -183,10 +203,12 @@ function StandardCheck({ isAdmin }: { isAdmin: boolean }) {
         const { error } = await supabase.from('property_details').upsert({ property_id: pid, ...patch }, { onConflict: 'property_id' })
         if (error) { setMsg(`写入 ${name} 失败：${error.message}（是否已运行 026 迁移？）`); setBusy(false); return }
         ok++
+        const fe = await writeFee(pid, a, l)
+        if (fe) { setMsg(`写入 ${name} 的清洁费表失败：${fe}（是否已运行 028 迁移？）`); setBusy(false); return }
         if (r.some((x) => typeof x === 'string' && x.includes('房东自己'))) { await supabase.from('properties').update({ cleaning_by: '房东自己' }).eq('id', pid); own++ }
       }
       setMsg(`导入了 ${ok} 个房源的标准清洁费${own ? `，其中 ${own} 个标记为“房东自己清洁”` : ''}。${miss.length ? `系统里找不到这 ${miss.length} 个：${miss.join('、')}` : ''}`)
-      await load()
+      await load(); onChanged()
     } catch (e) { setMsg(`读取失败：${(e as Error).message}`) }
     setBusy(false)
   }
@@ -196,17 +218,18 @@ function StandardCheck({ isAdmin }: { isAdmin: boolean }) {
       <div className="title-row">
         <h3 style={{ margin: 0 }}>标准清洁费 vs Hostaway 实际（近 {DAYS} 天订单）</h3>
         <span className="btn-row" style={{ margin: 0 }}>
+          {isAdmin && <button className="ghost" disabled={busy} onClick={fillAll}>填入下面的清洁费表</button>}
           {isAdmin && <label className="ghost" style={{ cursor: 'pointer' }}>{busy ? '导入中…' : '导入清洁费表'}<input type="file" accept=".xlsx,.xls" hidden disabled={busy} onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = '' }} /></label>}
           <button className="ghost" onClick={() => setOpen(!open)}>{open ? '收起' : '展开'}</button>
         </span>
       </div>
-      <p className="muted small">每个房源存了表里的 AIRBNB、ALISA 两个金额。订单的清洁费如果和这两个都对不上，就算“不一致”。取消和未成交的订单不算。按 Hostaway 更新后，会记下新价格从哪天起生效，更早的旧订单不再参与核对。已经 {rows.length - nNone} 个房源有标准，{nNone} 个还没有。</p>
+      <p className="muted small">AIRBNB 列是向客人收的清洁费，ALISA 列是付给 Alisa 的。订单里客人付的清洁费如果和 AIRBNB 列对不上，就算“不一致”。取消和未成交的订单不算。按 Hostaway 更新后，会记下新价格从哪天起生效，更早的旧订单不再参与核对。已经 {rows.length - nNone} 个房源有标准，{nNone} 个还没有。</p>
       {msg && <p className="muted">{msg}</p>}
       {open && <>
         <p><b style={{ color: nBad ? '#b3261e' : undefined }}>{nBad}</b> 个房源不一致　{isAdmin && nBad > 0 && <button className="ghost" disabled={busy} onClick={() => useHostaway(rows.filter((r) => r.status === '不一致'))}>全部按 Hostaway 更新</button>}　<label className="small" style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}><input type="checkbox" style={{ width: 'auto' }} checked={onlyBad} onChange={(e) => setOnlyBad(e.target.checked)} /> 只看不一致</label></p>
         <div className="table-wrap" style={{ border: 0 }}>
           <table className="tight" style={{ width: 'auto', minWidth: 0 }}>
-            <thead><tr><th>房源</th><th>标准 AIRBNB</th><th>标准 ALISA</th><th>Hostaway 实际（金额×单数）</th><th>订单数</th><th>对不上</th><th>结果（点一行看订单）</th><th></th></tr></thead>
+            <thead><tr><th>房源</th><th>向客人收（AIRBNB）</th><th>付 Alisa</th><th>Hostaway 实际（金额×单数）</th><th>订单数</th><th>对不上</th><th>结果（点一行看订单）</th><th></th></tr></thead>
             <tbody>{shown.map((r) => (
               <Fragment key={r.p.id}>
               <tr onClick={() => r.badList.length && setSel(sel === r.p.id ? null : r.p.id)} style={{ cursor: r.badList.length ? 'pointer' : undefined }}>

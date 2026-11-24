@@ -99,7 +99,7 @@ export default function Accounts() {
                 <td><select value={p.assistant_id ?? ''} onChange={(e) => assign(p, e.target.value)}>
                   <option value="">未分配</option>{assistants.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
                 </select></td>
-                <td><select value={p.cleaning_by} onChange={(e) => setCleaning(p, e.target.value)}><option>清洁公司</option><option>房东自己</option></select></td>
+                <td><select value={p.cleaning_by} onChange={(e) => setCleaning(p, e.target.value)}><option value="清洁公司">Alisa</option><option value="房东自己">房东自己</option></select></td>
               </tr>
             ))}
           </tbody>

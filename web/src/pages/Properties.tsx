@@ -208,7 +208,7 @@ function Detail({ row: r, canEdit, isAdmin, onEdit }: { row: Row; canEdit: boole
         <dt>地址</dt><dd>{dash(r.address)}</dd>
         <dt>区域</dt><dd>{dash(r.region)}</dd>
         <dt>主责助理</dt><dd>{dash(r.assistant?.name)}</dd>
-        <dt>清洁由谁做</dt><dd>{dash(r.cleaning_by)}</dd>
+        <dt>清洁由谁做</dt><dd>{r.cleaning_by === '房东自己' ? '房东自己' : 'Alisa'}</dd>
         <dt>户型</dt><dd>{dash(d?.bedrooms)} 房 {dash(d?.bathrooms)} 卫 · 可住 {dash(d?.max_guests)} 人</dd>
         <dt>床</dt><dd>{dash(d?.beds)}</dd>
         <dt>家电设施</dt><dd>{d?.appliances?.length ? d.appliances.join('、') : '—'}</dd>
@@ -277,7 +277,7 @@ function EditForm({ row, isAdmin, assistants, onCancel, onSaved }: { row: Row; i
     <label>{label}{multi ? <textarea rows={2} value={value} onChange={(e) => on(e.target.value)} /> : <input value={value} onChange={(e) => on(e.target.value)} />}</label>
   )
   const sel = (label: string, value: string, opts: string[], on: (v: string) => void) => (
-    <label>{label}<select value={value} onChange={(e) => on(e.target.value)}>{opts.map((o) => <option key={o}>{o}</option>)}</select></label>
+    <label>{label}<select value={value} onChange={(e) => on(e.target.value)}>{opts.map((o) => <option key={o} value={o}>{o === '清洁公司' ? 'Alisa' : o}</option>)}</select></label>
   )
 
   return (
