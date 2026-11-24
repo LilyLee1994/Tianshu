@@ -43,7 +43,7 @@ export default function Alerts() {
           <button className={done ? 'pill on' : 'pill'} onClick={() => setDone(true)}>已处理</button>
         </span>
       </div>
-      <p className="muted small">新订单的清洁费或房费，和这个房源近半年的订单比差得太多时，会在这里提醒负责人。看过没问题，或者处理完了，点“已处理”。判断标准：清洁费和平时不一样（差 $1 以上）；订单总价是 0；每晚房费不到平时的一半，或超过平时的 2.5 倍。房源订单不足 5 单、28 晚以上的长单、房东自己清洁的房源（不看清洁费）不判断。</p>
+      <p className="muted small">新订单的清洁费或房费，比这个房源近半年的订单低得太多时，会在这里提醒负责人。看过没问题，或者处理完了，点“已处理”。判断标准：清洁费比这个房源平时低 $10 以上（不管是谁做清洁都查）；订单总价是 0；每晚房费低于平时的 60%。订单不足 5 单的房源、28 晚以上的长单不判断。</p>
       {msg && <p className="muted">{msg}</p>}
       <div className="table-wrap">
         <table className="tight" style={{ width: 'auto', minWidth: 0 }}>

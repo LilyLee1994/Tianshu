@@ -180,15 +180,13 @@ async function syncGuestCleaningFee(db: ReturnType<typeof adminClient>, today: s
   return rows.length
 }
 
-// 订单异常：新下的订单（近 7 天下单），清洁费或房费和这个房源平时差太多，就记一条提醒给负责人。
+// 订单异常：新下的订单（近 7 天下单），清洁费比平时低 $10 以上，或每晚房费低于平时的 60%，就记一条提醒给负责人。
 // 对比的是这个房源近 180 天的订单（不含这一单、不含 28 晚以上的长单），至少要有 5 单才判断。
-const ALERT = { minHistory: 5, cleanTol: 1, cleanShare: 0.6, rateLow: 0.5, rateHigh: 2.5, longStay: 28 }
+const ALERT = { minHistory: 5, cleanLow: 10, rateLow: 0.6, longStay: 28 }
 const median = (a: number[]) => { const s = [...a].sort((x, y) => x - y); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2 }
 async function detectOrderAlerts(db: ReturnType<typeof adminClient>, today: string) {
   const { data: rs } = await db.from('reservations').select('id, property_id, channel_name, status, nights, total_price, cleaning_fee, arrival_date, reserved_at').not('property_id', 'is', null).gte('arrival_date', addDays(today, -180)).limit(10000)
   const act = (rs ?? []).filter((r) => active(r.status))
-  const { data: pr } = await db.from('properties').select('id, cleaning_by')
-  const ownerCleans = new Set((pr ?? []).filter((p) => p.cleaning_by === '房东自己').map((p) => p.id as number))
   const byProp = new Map<number, typeof act>()
   for (const r of act) (byProp.get(r.property_id as number) ?? byProp.set(r.property_id as number, []).get(r.property_id as number)!).push(r)
   const since = addDays(today, -7)
@@ -200,18 +198,14 @@ async function detectOrderAlerts(db: ReturnType<typeof adminClient>, today: stri
     if (hist.length < ALERT.minHistory) continue
     const fee = Number(c.cleaning_fee) || 0, total = Number(c.total_price) || 0, nights = Number(c.nights) || 0
     const label = `${c.channel_name ?? ''} 入住 ${c.arrival_date}`.trim()
-    if (!ownerCleans.has(pid)) {
-      const cnt = new Map<number, number>()
-      for (const h of hist) { const v = Math.round(Number(h.cleaning_fee) || 0); cnt.set(v, (cnt.get(v) ?? 0) + 1) }
-      const [mode, n] = [...cnt.entries()].sort((a, b) => b[1] - a[1])[0]
-      if (mode > 0 && n / hist.length >= ALERT.cleanShare && Math.abs(fee - mode) >= ALERT.cleanTol) out.push({ reservation_id: c.id as number, kind: '清洁费', property_id: pid, detail: `${label}：清洁费 $${fee}，这个房源平时是 $${mode}` })
-    }
+    // 清洁费：不管谁做清洁都查；比这个房源平时的清洁费低 $10 以上算异常
+    const usual = median(hist.map((h) => Number(h.cleaning_fee) || 0))
+    if (usual > 0 && fee <= usual - ALERT.cleanLow) out.push({ reservation_id: c.id as number, kind: '清洁费', property_id: pid, detail: `${label}：清洁费 $${fee}，这个房源平时是 $${usual.toFixed(0)}，低了 $${(usual - fee).toFixed(0)}` })
     if (total <= 0) out.push({ reservation_id: c.id as number, kind: '房费', property_id: pid, detail: `${label}：订单总价是 0` })
     else if (nights >= 1 && nights < ALERT.longStay) {
       const nightly = (total - fee) / nights
       const med = median(hist.map((h) => (Number(h.total_price) - (Number(h.cleaning_fee) || 0)) / (Number(h.nights) || 1)))
       if (med > 0 && nightly < med * ALERT.rateLow) out.push({ reservation_id: c.id as number, kind: '房费', property_id: pid, detail: `${label}：每晚均价 $${nightly.toFixed(0)}，只有平时（约 $${med.toFixed(0)}）的 ${Math.round((nightly / med) * 100)}%` })
-      else if (med > 0 && nightly > med * ALERT.rateHigh) out.push({ reservation_id: c.id as number, kind: '房费', property_id: pid, detail: `${label}：每晚均价 $${nightly.toFixed(0)}，是平时（约 $${med.toFixed(0)}）的 ${(nightly / med).toFixed(1)} 倍` })
     }
   }
   if (out.length) { const { error } = await db.from('order_alerts').upsert(out, { onConflict: 'reservation_id,kind', ignoreDuplicates: true }); if (error) return `出错：${error.message}` }
