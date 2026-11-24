@@ -117,7 +117,7 @@ export default function Shifts() {
           </div>
           <p className="muted small" style={{ margin: '0 0 6px' }}>日期下面的小字是这天别人已经选了休息的人（已提交的才会显示），选日子时可以避开。下面“团队排班”能看到所有人的完整安排。</p>
           <p>休息 <b>{nRest}</b>/4 · 居家办公 <b>{nHome}</b>/4 <span className="muted small">　点日期切换：空 → 休息 → 居家 → 空</span></p>
-          {me && (
+          {me && (<>
             <div className="btn-row" style={{ alignItems: 'center' }}>
               <span className="small">搭档（你休息时帮你看房源）</span>
               <select value={me.partner_id ?? ''} disabled={busy} onChange={(e) => act({ action: 'set_partner', user_id: me.id, partner_id: e.target.value, backup_id: me.backup_id }, '已保存。')}>
@@ -129,7 +129,7 @@ export default function Shifts() {
               </select>
             </div>
             {!me.partner_id && <p className="warn small">还没选搭档：你休息的那几天，房源会转给管理员。</p>}
-          )}
+          </>)}
           {myCover.length > 0 && (
             <div className="small" style={{ marginBottom: 8 }}>
               <b>代班预览</b>
