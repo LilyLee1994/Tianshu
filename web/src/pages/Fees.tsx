@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { money, today } from '../lib/ui'
@@ -89,7 +89,7 @@ function EditFee({ prop, cur, onClose, onSaved }: { prop: Prop; cur?: Fee; onClo
 
 // ====== 标准清洁费 vs Hostaway 订单里的实际清洁费 ======
 interface Std { property_id: number; std_clean_airbnb: number | null; std_clean_alisa: number | null; std_clean_guests: number | null; std_clean_sofa: boolean | null }
-interface Res { property_id: number; cleaning_fee: number | null; status: string | null }
+interface Res { property_id: number; cleaning_fee: number | null; status: string | null; arrival_date: string; channel_name: string | null; guest_name: string | null }
 const norm = (x: unknown) => String(x ?? '').toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]/g, '')
 const DEAD = /cancel|declin|expire|inquir|void|reject/i
 const DAYS = 120
@@ -102,13 +102,14 @@ function StandardCheck({ isAdmin }: { isAdmin: boolean }) {
   const [busy, setBusy] = useState(false)
   const [onlyBad, setOnlyBad] = useState(true)
   const [open, setOpen] = useState(true)
+  const [sel, setSel] = useState<number | null>(null)
 
   const load = useCallback(async () => {
     const since = new Date(Date.now() - DAYS * 86400_000).toISOString().slice(0, 10)
     const [p, d, r] = await Promise.all([
       supabase.from('properties').select('id, name, cleaning_by').order('name').limit(2000),
       supabase.from('property_details').select('property_id, std_clean_airbnb, std_clean_alisa, std_clean_guests, std_clean_sofa').limit(2000),
-      supabase.from('reservations').select('property_id, cleaning_fee, status').gte('arrival_date', since).limit(10000),
+      supabase.from('reservations').select('property_id, cleaning_fee, status, arrival_date, channel_name, guest_name').gte('arrival_date', since).order('arrival_date', { ascending: false }).limit(10000),
     ])
     if (d.error) { setMsg(`读取出错：${d.error.message}（是否已运行 026 迁移？）`); return }
     setProps((p.data ?? []) as never)
@@ -130,7 +131,7 @@ function StandardCheck({ isAdmin }: { isAdmin: boolean }) {
       const bad = [...cnt.entries()].filter(([v]) => !ok(v)).reduce((n, [, c]) => n + c, 0)
       const actual = [...cnt.entries()].sort((x, y) => y[1] - x[1]).map(([v, c]) => `${v}×${c}`).join('、')
       const status = a == null && l == null ? '没有标准' : !list.length ? '近期无订单' : bad ? '不一致' : '一致'
-      return { p, a, l, n: list.length, bad, actual, status }
+      return { p, a, l, n: list.length, bad, actual, status, badList: list.filter((r) => !ok(Number(r.cleaning_fee) || 0)) }
     })
   }, [props, std, res])
 
@@ -184,16 +185,22 @@ function StandardCheck({ isAdmin }: { isAdmin: boolean }) {
       <p className="muted small">每个房源存了表里的 AIRBNB、ALISA 两个金额。订单的清洁费如果和这两个都对不上，就算“不一致”。取消和未成交的订单不算。已经 {rows.length - nNone} 个房源有标准，{nNone} 个还没有。</p>
       {msg && <p className="muted">{msg}</p>}
       {open && <>
-        <p><b style={{ color: nBad ? '#b3261e' : undefined }}>{nBad}</b> 个房源不一致　<label className="small"><input type="checkbox" checked={onlyBad} onChange={(e) => setOnlyBad(e.target.checked)} /> 只看不一致</label></p>
+        <p><b style={{ color: nBad ? '#b3261e' : undefined }}>{nBad}</b> 个房源不一致　<label className="small" style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}><input type="checkbox" style={{ width: 'auto' }} checked={onlyBad} onChange={(e) => setOnlyBad(e.target.checked)} /> 只看不一致</label></p>
         <div className="table-wrap" style={{ border: 0 }}>
           <table className="tight" style={{ width: 'auto', minWidth: 0 }}>
-            <thead><tr><th>房源</th><th>标准 AIRBNB</th><th>标准 ALISA</th><th>Hostaway 实际（金额×单数）</th><th>订单数</th><th>对不上</th><th>结果</th></tr></thead>
+            <thead><tr><th>房源</th><th>标准 AIRBNB</th><th>标准 ALISA</th><th>Hostaway 实际（金额×单数）</th><th>订单数</th><th>对不上</th><th>结果（点一行看订单）</th></tr></thead>
             <tbody>{shown.map((r) => (
-              <tr key={r.p.id}>
+              <Fragment key={r.p.id}>
+              <tr onClick={() => r.badList.length && setSel(sel === r.p.id ? null : r.p.id)} style={{ cursor: r.badList.length ? 'pointer' : undefined }}>
                 <td><b>{r.p.name}</b>{r.p.cleaning_by === '房东自己' && <span className="muted small"> 房东自己清洁</span>}</td>
                 <td>{r.a ?? '—'}</td><td>{r.l ?? '—'}</td><td className="small">{r.actual || '—'}</td><td>{r.n}</td><td>{r.bad || ''}</td>
                 <td><span className={r.status === '不一致' ? 'chip amber' : r.status === '一致' ? 'chip green' : 'chip gray'}>{r.status}</span></td>
               </tr>
+              {sel === r.p.id && <tr><td colSpan={7} className="small" style={{ background: '#faf8f2' }}>
+                对不上的订单：{r.badList.map((x, i) => <div key={i}>入住 {x.arrival_date} · {x.channel_name ?? '—'} · {x.guest_name ?? '—'} · 清洁费 <b>{Number(x.cleaning_fee) || 0}</b></div>)}
+                <div className="muted">订单的清洁费是订的那天定下的，之后房源改价不会跟着变。所以如果对不上的都是早期订单，多半只是改过价，不用处理。</div>
+              </td></tr>}
+              </Fragment>
             ))}</tbody>
           </table>
           {!shown.length && <p className="muted pad">{onlyBad ? '没有不一致的房源。' : '没有数据。'}</p>}
