@@ -15,7 +15,7 @@ interface Contract {
 }
 interface Row {
   id: number; name: string; address: string | null; region: string | null; assistant_id: string | null
-  airbnb_url: string | null; booking_url: string | null; commission_rate: number | null; airbnb_account: PlatformAccount | null; account_info: { old_list: OldAccount[] } | null; legacy: boolean; hostaway_id: number | null; cleaning_by: string; cleaner_id: string | null; cleaner: { name: string } | null
+  airbnb_url: string | null; booking_url: string | null; commission_rate: number | null; airbnb_account: PlatformAccount | null; account_info: { old_list: OldAccount[] | null; old_accounts: string[] | null } | null; legacy: boolean; hostaway_id: number | null; cleaning_by: string; cleaner_id: string | null; cleaner: { name: string } | null
   assistant: { name: string } | null
   property_details: Details | null
   property_contracts: Contract | null
@@ -55,7 +55,7 @@ export default function Properties() {
   const load = useCallback(async () => {
     const [p, a] = await Promise.all([
       supabase.from('properties')
-        .select('id, name, address, region, assistant_id, airbnb_url, booking_url, commission_rate, legacy, hostaway_id, cleaning_by, airbnb_account:platform_accounts!airbnb_account_id(id, login, needs_verification, note, password, google_password), account_info:property_account_info(old_list), assistant:profiles!assistant_id(name), property_details(*), property_contracts(*)')
+        .select('id, name, address, region, assistant_id, airbnb_url, booking_url, commission_rate, legacy, hostaway_id, cleaning_by, airbnb_account:platform_accounts!airbnb_account_id(id, login, needs_verification, note, password, google_password), account_info:property_account_info(old_list, old_accounts), assistant:profiles!assistant_id(name), property_details(*), property_contracts(*)')
         .order('name'),
       supabase.from('profiles').select('id, name').eq('role', 'assistant').eq('active', true).order('name'),
     ])
@@ -212,7 +212,7 @@ function Detail({ row: r, canEdit, onEdit }: { row: Row; canEdit: boolean; onEdi
         <div className="plat"><b>Airbnb</b>{r.airbnb_url ? <a href={r.airbnb_url.startsWith('http') ? r.airbnb_url : `https://${r.airbnb_url}`} target="_blank" rel="noreferrer">打开房源页</a> : <span className="muted">还没填链接</span>}<span className="muted small">{ratingText('Airbnb', true)}</span></div>
         <div className="plat"><b>Booking</b>{r.booking_url ? <a href={r.booking_url.startsWith('http') ? r.booking_url : `https://${r.booking_url}`} target="_blank" rel="noreferrer">打开房源页</a> : <span className="muted">还没填链接</span>}<span className="muted small">{ratingText('Booking.com', false)}</span></div>
       </div>
-      {r.airbnb_account && <AccountBlock a={r.airbnb_account} old={r.account_info?.old_list ?? []} />}
+      {r.airbnb_account && <AccountBlock a={r.airbnb_account} old={r.account_info?.old_list?.length ? r.account_info.old_list : (r.account_info?.old_accounts ?? []).map((email) => ({ email, password: '', google_password: '' }))} />}
       {st === '待登记合同' && <p className="warn">水电燃气网络和合同到期日填完整后，房源才算“运营中”。</p>}
     </section>
   )
