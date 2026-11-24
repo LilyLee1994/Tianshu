@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx'
 import { supabase } from '../lib/supabase'
 import { callApi } from '../lib/api'
 
-interface Row { duty: string; property: string; login: string; pw: string; gpw: string; verify: string; other: string; old: string[] }
+interface Row { duty: string; property: string; login: string; pw: string; gpw: string; verify: string; other: string; old: Old[] }
 interface Merged { login: string; pw: string; gpw: string; verify: string }
 
 const t = (v: unknown) => String(v ?? '').trim()
@@ -27,14 +27,29 @@ function parseAdmin(wb: XLSX.WorkBook): CompanyRow[] {
 
 const MAIL = /[\w.+-]+@[\w-]+\.[\w.]+/g
 const OLD_KW = /老账号|老帐号|旧账号|旧帐号/
-// 老账号：“旧帐号”那一列里的邮箱，加上任何写着“老账号/旧帐号”的格子里的邮箱（只取邮箱，不带旁边的密码）
-function oldAccounts(cells: string[], login: string): string[] {
-  const out = new Set<string>()
-  const add = (x: string) => { for (const m of x.match(MAIL) ?? []) out.add(m.toLowerCase()) }
-  add(cells[0] ?? '')
-  for (const x of cells) if (OLD_KW.test(x)) add(x)
-  out.delete(login)
-  return [...out]
+const hasMail = (x: string) => { MAIL.lastIndex = 0; return MAIL.test(x) }
+const pwLike = (x: string) => !!x && !/\s/.test(x) && x.length >= 4 && x.length <= 40 && !hasMail(x) && !OLD_KW.test(x) && !/[：:\u4e00-\u9fff]/.test(x)
+interface Old { email: string; password: string; google_password: string }
+
+// 老账号：“旧帐号”那一列里的邮箱，加上任何写着“老账号/旧帐号”的格子里的邮箱。
+// 密码：同一格里邮箱后面跟着的，或邮箱格后面连续的“像密码”的格子（最多 2 个：账号密码、Google 密码）。
+function oldAccounts(cells: string[], login: string): Old[] {
+  const by = new Map<string, string[]>()
+  cells.forEach((x, i) => {
+    if (!x || !(i === 0 || OLD_KW.test(x)) || !hasMail(x)) return
+    const mails = x.match(MAIL) ?? []
+    mails.forEach((m, k) => {
+      const email = m.toLowerCase()
+      if (email === login) return
+      const pws: string[] = by.get(email) ?? []
+      const after = x.slice(x.indexOf(m) + m.length, k + 1 < mails.length ? x.indexOf(mails[k + 1]) : undefined)
+      const tok = after.split(/[\s（）()、,，;；]+/).filter(Boolean).find(pwLike)
+      if (tok && !pws.includes(tok)) pws.push(tok)
+      if (k === mails.length - 1) for (let j = i + 1; j < cells.length && pws.length < 2 && pwLike(cells[j]); j++) if (!pws.includes(cells[j])) pws.push(cells[j])
+      by.set(email, pws)
+    })
+  })
+  return [...by.entries()].map(([email, p]) => ({ email, password: p[0] ?? '', google_password: p[1] ?? '' }))
 }
 
 function parse(wb: XLSX.WorkBook): Row[] {
@@ -142,7 +157,7 @@ export default function ImportAccounts() {
         if (error) { setLog([`更新房源 ${r.property} 失败：${error.message}`]); setBusy(false); return }
       }
       if (r.other || r.old.length) {
-        const { error } = await supabase.from('property_account_info').upsert({ property_id: p.id, raw: r.other || null, old_accounts: r.old }, { onConflict: 'property_id' })
+        const { error } = await supabase.from('property_account_info').upsert({ property_id: p.id, raw: r.other || null, old_list: r.old, old_accounts: r.old.map((o) => o.email) }, { onConflict: 'property_id' })
         if (error) { setLog([`保存 ${r.property} 的原表备注失败：${error.message}`]); setBusy(false); return }
       }
     }
