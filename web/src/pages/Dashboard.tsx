@@ -6,6 +6,7 @@ import { useAuth } from '../lib/auth'
 import { startSync, useSync } from '../lib/syncStore'
 import { statusOf } from './Properties'
 import { daysTo } from './Contracts'
+import { badOne } from './Reviews'
 
 interface Todo { tag: string; text: string; to: string; cls: string }
 
@@ -25,7 +26,10 @@ export default function Dashboard() {
     Promise.all([
       supabase.from('work_orders').select('status, type, description, property:properties(name)').not('status', 'in', '(已完成,已取消)'),
       supabase.from('properties').select('name, property_contracts(*)').eq('legacy', false),
-    ]).then(([o, p]) => {
+      supabase.from('reviews').select('id, channel_name, rating, reviewed_at, property:properties(name)').not('rating', 'is', null).gte('reviewed_at', new Date(Date.now() - 14 * 86400_000).toISOString()).order('reviewed_at', { ascending: false }).limit(500),
+      supabase.from('review_actions').select('review_id, status').limit(5000),
+      supabase.from('claims').select('content, property:properties(name)').eq('status', '待提交').limit(50),
+    ]).then(([o, p, rv, ra, cl]) => {
       const t: Todo[] = []
       let pending = 0, doing = 0
       for (const x of (o.data ?? []) as unknown as { status: string; type: string; description: string; property: { name: string } }[]) {
@@ -43,6 +47,11 @@ export default function Dashboard() {
         const d = daysTo(c?.end_date ?? null)
         if (d !== null && d >= 0 && d <= 60) t.push({ tag: '到期', text: `${r.name} 合同 ${d} 天后到期`, to: '/contracts', cls: 'amber' })
       }
+      const done = new Set((ra.data ?? []).filter((a: { status: string }) => a.status !== '待处理').map((a: { review_id: number }) => a.review_id))
+      for (const r of (rv.data ?? []) as unknown as { id: number; channel_name: string | null; rating: number; reviewed_at: string; property: { name: string } }[]) {
+        if (badOne(r.channel_name, Number(r.rating)) && !done.has(r.id)) t.push({ tag: '差评', text: `${r.property?.name} · ${r.channel_name} ${r.channel_name === 'Airbnb' ? Number(r.rating) / 2 + ' 星' : r.rating + ' 分'} · ${r.reviewed_at.slice(0, 10)}`, to: '/reviews', cls: 'purple' })
+      }
+      for (const c of (cl.data ?? []) as unknown as { content: string; property: { name: string } }[]) t.push({ tag: '索赔', text: `${c.property?.name} · ${c.content}，还没提交平台`, to: '/claims', cls: 'amber' })
       setTodos(t); setStats({ pending, doing, incomplete }); setLoading(false)
     })
   }, [])
