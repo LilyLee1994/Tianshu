@@ -78,6 +78,8 @@ export default function Shifts() {
     await act({ action: 'submit', month, rest, home }, '已提交并锁定。')
   }
 
+  // 其他人这天的安排（我自己的不算），用来选日子时避开别人
+  const othersOn = (d: number, k: Kind) => team.filter((t) => t.id !== profile?.id && plans[t.id]?.[d] === k).map((t) => t.name).join('、')
   const cells = useMemo(() => [...Array(firstDow(month)).fill(0), ...Array.from({ length: daysIn(month) }, (_, i) => i + 1)], [month])
   const myCover = me ? Object.keys(mine).map(Number).filter((d) => mine[d] === '休息').sort((a, b) => a - b).map((d) => ({ d, ...coverOf(me, d, { ...plans, [me.id]: mine }) })) : []
   const myReq = reqs.find((r) => r.user_id === profile?.id)
@@ -102,16 +104,18 @@ export default function Shifts() {
             <h3 style={{ margin: 0 }}>我的排班（{month}）</h3>
             <span className={locked ? 'chip blue' : 'chip amber'}>{locked ? '已提交，已锁定' : '还没提交'}</span>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6, maxWidth: 560, margin: '12px 0' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6, maxWidth: 720, margin: '12px 0' }}>
             {['一', '二', '三', '四', '五', '六', '日'].map((w) => <div key={w} className="muted small" style={{ textAlign: 'center' }}>{w}</div>)}
             {cells.map((d, i) => d === 0 ? <div key={i} /> : (
               <button key={i} className="ghost" disabled={locked}
                 onClick={() => setMine((p) => { const n = { ...p }; const nx = NEXT[p[d] ?? '']; if (nx) n[d] = nx; else delete n[d]; return n })}
                 style={{ minHeight: 52, padding: 4, background: mine[d] === '休息' ? '#fde8e6' : mine[d] === '居家' ? '#e3f0fa' : undefined }}>
                 <div>{d}</div><div className="small">{mine[d] ?? ''}</div>
+                {othersOn(d, '休息') && <div className="muted" style={{ fontSize: 10, lineHeight: 1.2, marginTop: 2 }} title={`${othersOn(d, '休息')} 这天休息`}>{othersOn(d, '休息')}休</div>}
               </button>
             ))}
           </div>
+          <p className="muted small" style={{ margin: '0 0 6px' }}>日期下面的小字是这天别人已经选了休息的人（已提交的才会显示），选日子时可以避开。下面“团队排班”能看到所有人的完整安排。</p>
           <p>休息 <b>{nRest}</b>/4 · 居家办公 <b>{nHome}</b>/4 <span className="muted small">　点日期切换：空 → 休息 → 居家 → 空</span></p>
           {me && (
             <p className="muted small">搭档：{name(me.partner_id)}　备选：{name(me.backup_id)}{!me.partner_id && '（管理员还没给你设置搭档）'}</p>
@@ -134,7 +138,7 @@ export default function Shifts() {
       )}
 
       <section className="card" style={{ marginBottom: 16 }}>
-        <h3 style={{ marginTop: 0 }}>{isAdmin ? '全局排班' : '团队提交情况'}（{month}）</h3>
+        <h3 style={{ marginTop: 0 }}>{isAdmin ? '全局排班' : '团队排班'}（{month}）</h3>
         {isAdmin && reqs.length > 0 && (
           <div style={{ marginBottom: 12 }}>
             <b>待批准的变更</b>
@@ -147,25 +151,19 @@ export default function Shifts() {
             ))}
           </div>
         )}
-        {!isAdmin && team.map((t) => (
-          <div key={t.id} className="title-row" style={{ padding: '6px 0', borderBottom: '1px solid #eef1f4' }}>
-            <span>{t.name}　<span className="muted small">搭档 {name(t.partner_id)}</span></span>
-            <span className={status[t.id] === '已提交' ? 'chip green' : 'chip amber'}>{status[t.id] === '已提交' ? '已提交' : '未提交'}</span>
-          </div>
-        ))}
-        {isAdmin && (
+        {(
           <div className="table-wrap" style={{ border: 0 }}>
             <table style={{ minWidth: 1500 }}>
               <thead><tr><th>助理</th><th>搭档</th><th>备选</th><th>状态</th>{days.map((d) => <th key={d} style={{ padding: '6px 2px', textAlign: 'center' }}>{d}</th>)}</tr></thead>
               <tbody>
                 {team.map((t) => (
-                  <tr key={t.id}>
-                    <td>{t.name}</td>
+                  <tr key={t.id} style={t.id === profile?.id ? { background: '#f3f9f8' } : undefined}>
+                    <td>{t.name}{t.id === profile?.id && <span className="muted small">（我）</span>}</td>
                     {(['partner_id', 'backup_id'] as const).map((k) => (
                       <td key={k}>
-                        <select value={t[k] ?? ''} disabled={busy} onChange={(e) => act({ action: 'set_partner', user_id: t.id, partner_id: k === 'partner_id' ? e.target.value : t.partner_id, backup_id: k === 'backup_id' ? e.target.value : t.backup_id }, '已保存。')}>
+                        {!isAdmin ? name(t[k]) : <select value={t[k] ?? ''} disabled={busy} onChange={(e) => act({ action: 'set_partner', user_id: t.id, partner_id: k === 'partner_id' ? e.target.value : t.partner_id, backup_id: k === 'backup_id' ? e.target.value : t.backup_id }, '已保存。')}>
                           <option value="">—</option>{team.filter((x) => x.id !== t.id).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
-                        </select>
+                        </select>}
                       </td>
                     ))}
                     <td><span className={status[t.id] === '已提交' ? 'chip green' : 'chip amber'} style={{ marginLeft: 0 }}>{status[t.id] === '已提交' ? '已提交' : '未提交'}</span></td>
@@ -174,7 +172,7 @@ export default function Shifts() {
                       const clash = k === '休息' && !!t.partner_id && plans[t.partner_id]?.[d] === '休息'
                       return (
                         <td key={d} style={{ padding: 0, textAlign: 'center' }}>
-                          <button className="ghost" disabled={busy} title={clash ? '和搭档同天休息' : ''}
+                          <button className="ghost" disabled={busy || !isAdmin} title={clash ? '和搭档同天休息' : ''}
                             onClick={() => act({ action: 'admin_set', user_id: t.id, date: dayStr(month, d), kind: NEXT[k ?? ''] ?? null }, '已修改。')}
                             style={{ minHeight: 30, minWidth: 30, padding: 0, background: clash ? '#f8c9c4' : k === '休息' ? '#fde8e6' : k === '居家' ? '#e3f0fa' : undefined, border: clash ? '1px solid #b3261e' : undefined }}>
                             {k === '休息' ? '休' : k === '居家' ? '居' : ''}
@@ -192,7 +190,7 @@ export default function Shifts() {
             </table>
           </div>
         )}
-        {isAdmin && <p className="muted small">点格子切换：空 → 休 → 居 → 空，管理员可以直接改，不受锁定限制。红框表示和搭档同一天休息，需要调整；在岗人数红色表示当天没人在岗。</p>}
+        {isAdmin ? <p className="muted small">点格子切换：空 → 休 → 居 → 空，管理员可以直接改，不受锁定限制。红框表示和搭档同一天休息，需要调整；在岗人数红色表示当天没人在岗。</p> : <p className="muted small">休 = 休息，居 = 居家办公。红框表示和搭档同一天休息；表里没填的人是还没提交。</p>}
         {isAdmin && !team.length && <p className="muted pad">还没有客服助理账号。</p>}
       </section>
     </div>
