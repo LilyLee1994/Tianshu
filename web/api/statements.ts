@@ -4,7 +4,8 @@ const CANCELLED = /cancel|inquiry|declin|expire|denied/i
 const r2 = (n: number) => Math.round(n * 100) / 100
 const nextMonth = (m: string) => { const [y, mo] = m.split('-').map(Number); return mo === 12 ? `${y + 1}-01-01` : `${y}-${String(mo + 1).padStart(2, '0')}-01` }
 
-// 结算单草稿：房费（不含清洁费，按退房日归月）− 佣金 − 平台费 − GST ± 手工调整 − 房东承担的维修费
+// 结算单草稿：房费（不含清洁费，按退房日归月）先扣平台费（16.5%，含 GST），再在剩下的金额上扣佣金（15% × 1.1 = 16.5%，含 GST），
+// 即 房费 × 0.835 × 0.835；再 ± 手工调整、− 房东承担的维修费
 export default async function handler(req: Req, res: Res) {
   try {
     const db = adminClient()
@@ -16,7 +17,7 @@ export default async function handler(req: Req, res: Res) {
       const from = `${month}-01`, to = nextMonth(month)
       const { data: rules } = await db.from('fee_rules').select('key, value')
       const rate = Object.fromEntries((rules ?? []).map((x) => [x.key, Number(x.value)]))
-      const platformRate = rate.platform_fee_rate ?? 0.155, gstRate = rate.gst_rate ?? 0.1
+      const platformRate = rate.platform_fee_rate ?? 0.165, gstRate = rate.gst_rate ?? 0.1
 
       const { data: props } = await db.from('properties').select('id, commission_rate')
       const commOf = new Map((props ?? []).map((p) => [p.id as number, Number(p.commission_rate)]))
@@ -51,9 +52,11 @@ export default async function handler(req: Req, res: Res) {
         if (old && old.status !== '草稿') { kept++; continue }
         const e = inc.get(pid) ?? { n: 0, nights: 0, rental: 0 }
         const cr = commOf.get(pid) ?? 0.15
-        const commission = r2(e.rental * cr), platform = r2(e.rental * platformRate), gst = r2((commission + platform) * gstRate)
+        const platform = r2(e.rental * platformRate)                                  // 平台费（含 GST）
+        const commission = r2((e.rental - platform) * cr * (1 + gstRate))              // 佣金（含 GST），在扣完平台费的金额上算
+        const gst = r2(platform * gstRate / (1 + gstRate) + commission * gstRate / (1 + gstRate)) // 其中的 GST，仅供对账参考
         const ownerCosts = r2(costs.get(pid) ?? 0), adj = Number(old?.adjustment ?? 0)
-        const payable = r2(e.rental - commission - platform - gst - ownerCosts + adj)
+        const payable = r2(e.rental - commission - platform - ownerCosts + adj)
         const row = { property_id: pid, month: from, reservations: e.n, nights: e.nights, rental_income: r2(e.rental), commission_rate: cr, commission, platform_fee: platform, gst, owner_costs: ownerCosts, payable, generated_at: new Date().toISOString() }
         const { error } = await db.from('owner_statements').upsert(row, { onConflict: 'property_id,month' })
         if (error) return res.status(500).json({ error: error.message })
@@ -69,7 +72,7 @@ export default async function handler(req: Req, res: Res) {
       if (st.status !== '草稿') return res.status(400).json({ error: '已确认的结算单不能再改。' })
       const adj = Number(adjustment)
       if (Number.isNaN(adj)) return res.status(400).json({ error: '调整金额要填数字。' })
-      const payable = r2(Number(st.rental_income) - Number(st.commission) - Number(st.platform_fee) - Number(st.gst) - Number(st.owner_costs) + adj)
+      const payable = r2(Number(st.rental_income) - Number(st.commission) - Number(st.platform_fee) - Number(st.owner_costs) + adj)
       await db.from('owner_statements').update({ adjustment: adj, adjustment_note: note || null, payable }).eq('id', id)
       return res.status(200).json({ ok: true })
     }

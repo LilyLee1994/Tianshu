@@ -66,7 +66,7 @@ export default function Statements() {
   return (
     <div>
       <h1>房东结算（财务）</h1>
-      <p className="muted small">应付房东 = 房费（不含清洁费，按退房日归月）− 佣金 − 平台费 − GST ± 手工调整 − 房东承担的维修费。确认后不能再改。</p>
+      <p className="muted small">应付房东 = 房费（不含清洁费，按退房日归月）先扣平台费 16.5%，再在剩下的金额上扣佣金（比例 × 1.1，默认 15% → 16.5%）；再 ± 手工调整、− 房东承担的维修费。平台费和佣金已含 GST，“其中 GST”仅供对账。确认后不能再改。</p>
       <div className="btn-row" style={{ marginBottom: 12 }}>
         <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
         <input placeholder="搜索房源" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -81,7 +81,7 @@ export default function Statements() {
 
       <div className="table-wrap">
         <table style={{ minWidth: 1100 }}>
-          <thead><tr><th>房源</th><th>助理</th><th>订单/晚</th><th>房费</th><th>佣金</th><th>平台费</th><th>GST</th><th>维修扣款</th><th>调整</th><th>应付房东</th><th>状态</th>{canEdit && <th></th>}</tr></thead>
+          <thead><tr><th>房源</th><th>助理</th><th>订单/晚</th><th>房费</th><th>佣金</th><th>平台费</th><th>其中 GST</th><th>维修扣款</th><th>调整</th><th>应付房东</th><th>状态</th>{canEdit && <th></th>}</tr></thead>
           <tbody>
             {shown.map((r) => (
               <tr key={r.id}>
