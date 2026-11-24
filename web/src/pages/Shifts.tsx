@@ -72,7 +72,8 @@ export default function Shifts() {
   }
 
   const submit = async () => {
-    if ((nRest !== 4 || nHome !== 4) && !window.confirm(`你现在是休息 ${nRest} 天、居家办公 ${nHome} 天，标准是各 4 天。确定提交吗？提交后会锁定。`)) return
+    if (nRest !== 4 || nHome !== 4) { setMsg('必须正好选 4 天休息和 4 天居家办公才能提交。'); return }
+    if (!window.confirm('提交后会锁定，要改需要管理员批准。确定提交吗？')) return
     const rest = Object.entries(mine).filter(([, k]) => k === '休息').map(([d]) => dayStr(month, Number(d)))
     const home = Object.entries(mine).filter(([, k]) => k === '居家').map(([d]) => dayStr(month, Number(d)))
     await act({ action: 'submit', month, rest, home }, '已提交并锁定。')
@@ -137,7 +138,8 @@ export default function Shifts() {
             </div>
           )}
           <div className="btn-row">
-            {!locked && <button disabled={busy} onClick={submit}>{busy ? '提交中…' : '提交并锁定'}</button>}
+            {!locked && <button disabled={busy || nRest !== 4 || nHome !== 4} onClick={submit}>{busy ? '提交中…' : '提交并锁定'}</button>}
+            {!locked && (nRest !== 4 || nHome !== 4) && <span className="warn small">还差：休息 {Math.max(0, 4 - nRest)} 天、居家办公 {Math.max(0, 4 - nHome)} 天{nRest > 4 ? `；休息多选了 ${nRest - 4} 天` : ''}{nHome > 4 ? `；居家多选了 ${nHome - 4} 天` : ''}</span>}
             {locked && !myReq && <>
               <input placeholder="变更原因" value={reason} onChange={(e) => setReason(e.target.value)} />
               <button className="ghost" disabled={busy} onClick={async () => { if (await act({ action: 'request', month, reason }, '已提交变更申请，等管理员批准。')) setReason('') }}>申请变更</button>

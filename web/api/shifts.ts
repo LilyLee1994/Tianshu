@@ -19,6 +19,7 @@ export default async function handler(req: Req, res: Res) {
       if (!isMonth(month)) return res.status(400).json({ error: '月份格式不对。' })
       const R: string[] = Array.isArray(rest) ? rest : [], H: string[] = Array.isArray(home) ? home : []
       if (![...R, ...H].every((d) => inMonth(d, month))) return res.status(400).json({ error: '有日期不在这个月内。' })
+      if (new Set(R).size !== 4 || new Set(H).size !== 4) return res.status(400).json({ error: `必须正好选 4 天休息和 4 天居家办公才能提交（现在是休息 ${new Set(R).size} 天、居家 ${new Set(H).size} 天）。` })
       if (R.some((d) => H.includes(d))) return res.status(400).json({ error: '同一天不能既休息又居家。' })
       const { data: m } = await db.from('shift_months').select('status').eq('user_id', c.id).eq('month', `${month}-01`).maybeSingle()
       if (m?.status === '已提交') return res.status(400).json({ error: '这个月已经提交并锁定，要改请先申请变更。' })
