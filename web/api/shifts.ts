@@ -42,6 +42,21 @@ export default async function handler(req: Req, res: Res) {
       return res.status(200).json({ ok: true })
     }
 
+    // 搭档/备选：助理自己选自己的，管理员可以改任何人
+    if (action === 'set_partner') {
+      const target = admin ? user_id : c.id
+      if (!admin && user_id && user_id !== c.id) return res.status(403).json({ error: '只能设置自己的搭档。' })
+      if (!target || partner_id === target || backup_id === target) return res.status(400).json({ error: '搭档和备选不能是自己。' })
+      if (partner_id && partner_id === backup_id) return res.status(400).json({ error: '搭档和备选不能是同一个人。' })
+      for (const id of [partner_id, backup_id].filter(Boolean)) {
+        const { data: pr } = await db.from('profiles').select('role, active').eq('id', id).maybeSingle()
+        if (!pr || pr.role !== 'assistant' || !pr.active) return res.status(400).json({ error: '搭档只能选在职的客服助理。' })
+      }
+      const { error } = await db.from('profiles').update({ partner_id: partner_id || null, backup_id: backup_id || null }).eq('id', target)
+      if (error) return res.status(500).json({ error: error.message })
+      return res.status(200).json({ ok: true })
+    }
+
     if (!admin) return res.status(403).json({ error: '只有管理员可以做这个操作。' })
 
     // 批准：解锁该月让本人修改后重新提交；驳回：保持锁定
@@ -62,12 +77,6 @@ export default async function handler(req: Req, res: Res) {
       return res.status(200).json({ ok: true })
     }
 
-    if (action === 'set_partner') {
-      if (!user_id || partner_id === user_id || backup_id === user_id) return res.status(400).json({ error: '搭档和备选不能是自己。' })
-      const { error } = await db.from('profiles').update({ partner_id: partner_id || null, backup_id: backup_id || null }).eq('id', user_id)
-      if (error) return res.status(500).json({ error: error.message })
-      return res.status(200).json({ ok: true })
-    }
     return res.status(400).json({ error: '未知操作。' })
   } catch (e) {
     return res.status(500).json({ error: (e as Error).message })

@@ -95,7 +95,7 @@ export default function Shifts() {
           <input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} />
         </span>
       </div>
-      <p className="muted small">每人每月休息 4 天、居家办公 4 天，月底自己填下个月的，提交后锁定，要改须管理员批准。居家办公日仍算在岗，不转给搭档；休息日的房源转给搭档。</p>
+      <p className="muted small">每人每月休息 4 天、居家办公 4 天，月底自己填下个月的，提交后锁定，要改须管理员批准。搭档和备选自己选，随时可以改（管理员也能改）。居家办公日仍算在岗，不转给搭档；休息日的房源转给搭档。</p>
       {msg && <p className="muted">{msg}</p>}
 
       {isAssistant && (
@@ -118,7 +118,17 @@ export default function Shifts() {
           <p className="muted small" style={{ margin: '0 0 6px' }}>日期下面的小字是这天别人已经选了休息的人（已提交的才会显示），选日子时可以避开。下面“团队排班”能看到所有人的完整安排。</p>
           <p>休息 <b>{nRest}</b>/4 · 居家办公 <b>{nHome}</b>/4 <span className="muted small">　点日期切换：空 → 休息 → 居家 → 空</span></p>
           {me && (
-            <p className="muted small">搭档：{name(me.partner_id)}　备选：{name(me.backup_id)}{!me.partner_id && '（管理员还没给你设置搭档）'}</p>
+            <div className="btn-row" style={{ alignItems: 'center' }}>
+              <span className="small">搭档（你休息时帮你看房源）</span>
+              <select value={me.partner_id ?? ''} disabled={busy} onChange={(e) => act({ action: 'set_partner', user_id: me.id, partner_id: e.target.value, backup_id: me.backup_id }, '已保存。')}>
+                <option value="">请选择</option>{team.filter((x) => x.id !== me.id && x.id !== me.backup_id).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+              </select>
+              <span className="small">备选（搭档也休息时）</span>
+              <select value={me.backup_id ?? ''} disabled={busy} onChange={(e) => act({ action: 'set_partner', user_id: me.id, partner_id: me.partner_id, backup_id: e.target.value }, '已保存。')}>
+                <option value="">不设置</option>{team.filter((x) => x.id !== me.id && x.id !== me.partner_id).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+              </select>
+            </div>
+            {!me.partner_id && <p className="warn small">还没选搭档：你休息的那几天，房源会转给管理员。</p>}
           )}
           {myCover.length > 0 && (
             <div className="small" style={{ marginBottom: 8 }}>
@@ -161,7 +171,7 @@ export default function Shifts() {
                     <td>{t.name}{t.id === profile?.id && <span className="muted small">（我）</span>}</td>
                     {(['partner_id', 'backup_id'] as const).map((k) => (
                       <td key={k}>
-                        {!isAdmin ? name(t[k]) : <select value={t[k] ?? ''} disabled={busy} onChange={(e) => act({ action: 'set_partner', user_id: t.id, partner_id: k === 'partner_id' ? e.target.value : t.partner_id, backup_id: k === 'backup_id' ? e.target.value : t.backup_id }, '已保存。')}>
+                        {!(isAdmin || t.id === profile?.id) ? name(t[k]) : <select value={t[k] ?? ''} disabled={busy} onChange={(e) => act({ action: 'set_partner', user_id: t.id, partner_id: k === 'partner_id' ? e.target.value : t.partner_id, backup_id: k === 'backup_id' ? e.target.value : t.backup_id }, '已保存。')}>
                           <option value="">—</option>{team.filter((x) => x.id !== t.id).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
                         </select>}
                       </td>
