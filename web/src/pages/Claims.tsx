@@ -86,7 +86,7 @@ export default function Claims() {
         {!shown.length && <p className="muted pad">还没有索赔记录。</p>}
       </div>
 
-      {adding && <AddModal props={isAssistant ? props.filter((x) => !!x.assistant_id && cover.has(x.assistant_id)) : props} me={profile?.id ?? ''} onClose={() => setAdding(false)} onSaved={() => { setAdding(false); setMsg('已登记。'); load() }} />}
+      {adding && <AddModal defaultProp={onlyProp} props={isAssistant ? props.filter((x) => !!x.assistant_id && cover.has(x.assistant_id)) : props} me={profile?.id ?? ''} onClose={() => setAdding(false)} onSaved={() => { setAdding(false); setMsg('已登记。'); load() }} />}
       {upd && <UpdateModal row={upd} onClose={() => setUpd(null)} onSaved={() => { setUpd(null); setMsg('已更新。'); load() }} />}
       {pics && (
         <div className="modal-bg" onClick={() => setPics(null)}>
@@ -101,9 +101,9 @@ export default function Claims() {
   )
 }
 
-function AddModal({ props, me, onClose, onSaved }: { props: Prop[]; me: string; onClose: () => void; onSaved: () => void }) {
+function AddModal({ props, me, defaultProp, onClose, onSaved }: { props: Prop[]; me: string; defaultProp: number | null; onClose: () => void; onSaved: () => void }) {
   const sorted = useMemo(() => [...props].sort((a, b) => Number(b.assistant_id === me) - Number(a.assistant_id === me) || a.name.localeCompare(b.name)), [props, me])
-  const [f, setF] = useState({ property_id: '', platform: 'Airbnb', date: today(), content: '', amount: '' })
+  const [f, setF] = useState({ property_id: defaultProp && props.some((x) => x.id === defaultProp) ? String(defaultProp) : '', platform: 'Airbnb', date: today(), content: '', amount: '' })
   const [files, setFiles] = useState<File[]>([])
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
