@@ -81,3 +81,6 @@ label.check input { min-height: 0; width: 18px; height: 18px; }
 .copy-ico { background: none; border: 0; padding: 2px 4px; margin-left: 4px; min-height: 0; color: #8a95a3; cursor: pointer; vertical-align: middle; border-radius: 4px; line-height: 0; }
 .copy-ico:hover { color: #0f6b66; background: #eef3f2; }
 td .ghost, td button.ghost { white-space: nowrap; }
+.tight th, .tight td { padding: 6px 12px; vertical-align: middle; }
+.cell-ell { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.cell-ell.open { white-space: pre-wrap; word-break: break-all; max-width: 420px; }

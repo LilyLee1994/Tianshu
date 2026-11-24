@@ -13,6 +13,9 @@ export default function Vault() {
   const [msg, setMsg] = useState('')
   const [editC, setEditC] = useState<Partial<Company> | null>(null)
   const [editP, setEditP] = useState<Plat | null>(null)
+  const [open, setOpen] = useState<Set<string>>(new Set())
+  const flip = (k: string) => setOpen((o) => { const n = new Set(o); if (n.has(k)) n.delete(k); else n.add(k); return n })
+  const Ell = ({ k, text }: { k: string; text: string | null }) => (text ? <div className={open.has(k) ? 'cell-ell open' : 'cell-ell'} title={open.has(k) ? '点一下收起' : text} onClick={() => flip(k)}>{text}</div> : null)
 
   const load = useCallback(async () => {
     const [c, p] = await Promise.all([
@@ -58,13 +61,13 @@ export default function Vault() {
 
       {tab === 'company' && (
         <div className="table-wrap">
-          <table style={{ minWidth: 900 }}>
+          <table className="tight" style={{ width: 'auto', minWidth: 0 }}>
             <thead><tr><th>名称</th><th>账号</th><th>密码</th><th>备注</th><th>其他列（原表）</th><th></th></tr></thead>
             <tbody>{cShown.map((r) => (
               <tr key={r.id}>
-                <td style={{ whiteSpace: 'pre-wrap' }}>{r.reference || <span className="muted">（无名称）</span>}</td>
+                <td><Ell k={`cr${r.id}`} text={r.reference || null} />{!r.reference && <span className="muted">（无名称）</span>}</td>
                 <td><CopyVal v={r.account || null} /></td><td><CopyVal v={r.password} /></td>
-                <td style={{ maxWidth: 260, wordBreak: 'break-all' }}>{r.note ?? ''}</td><td style={{ maxWidth: 220, wordBreak: 'break-all' }}>{r.extra ?? ''}</td>
+                <td><Ell k={`cn${r.id}`} text={r.note} /></td><td><Ell k={`cx${r.id}`} text={r.extra} /></td>
                 <td className="btn-row" style={{ margin: 0 }}><button className="ghost" onClick={() => setEditC(r)}>编辑</button><button className="ghost" onClick={() => delC(r)}>删除</button></td>
               </tr>
             ))}</tbody>
@@ -75,12 +78,12 @@ export default function Vault() {
 
       {tab === 'platform' && (
         <div className="table-wrap">
-          <table style={{ minWidth: 900 }}>
+          <table className="tight" style={{ width: 'auto', minWidth: 0 }}>
             <thead><tr><th>登录邮箱</th><th>Airbnb 密码</th><th>Google 密码</th><th>房源</th><th></th></tr></thead>
             <tbody>{pShown.map((r) => (
               <tr key={r.id}>
                 <td><CopyVal v={r.login} /></td><td><CopyVal v={r.password} /></td><td><CopyVal v={r.google_password} /></td>
-                <td style={{ maxWidth: 320 }}>{r.properties.length} 个：{r.properties.map((x) => x.name).join('、')}</td>
+                <td><Ell k={`pp${r.id}`} text={`${r.properties.length} 个：${r.properties.map((x) => x.name).join('、')}`} /></td>
                 <td><button className="ghost" onClick={() => setEditP(r)}>编辑</button></td>
               </tr>
             ))}</tbody>
