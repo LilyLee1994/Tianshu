@@ -44,7 +44,8 @@ export default async function handler(req: Req, res: Res) {
     // 定时任务不重复跑；管理员手动点时，只把日历这一段重跑一遍
     if (isCron) return res.status(200).json({ done: true, summary: (run.summary as State).counts })
     const prev = run.summary as State
-    const redo: State = { ...prev, phase: 'calendar', calOffset: 0, failed: [], counts: { ...prev.counts, calendarRows: 0 } }
+    const feeChanges = await syncGuestCleaningFee(db, today)  // 清洁费跟 Hostaway 走，手动点也顺便更新一次
+    const redo: State = { ...prev, phase: 'calendar', calOffset: 0, failed: [], counts: { ...prev.counts, calendarRows: 0, cleaningFeeChanges: feeChanges } }
     await db.from('sync_runs').update({ summary: redo, ok: null, finished_at: null }).eq('id', run.id)
     run = { ...run, ok: null, summary: redo }
   }

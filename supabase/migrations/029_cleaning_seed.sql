@@ -1,0 +1,20 @@
+-- 清洁费初始数据（来自「清洁费」表）：
+--   1) 标了“房东自己清洁”的房源 → 清洁由谁做 = 房东自己
+--   2) ALISA 列 → 付 Alisa 的价（向客人收取的价从 Hostaway 自动拉，这里不填）
+-- 房源名按字母数字匹配（忽略大小写、空格、符号）。
+create temp table _own(name text);
+insert into _own values ('Burwood G04'),('Burwood S1'),('BurwoodS2'),('BurwoodS6'),('Canterbury 129'),('Canterbury 521'),('Chatswood219'),('Lidcombe1001'),('Panania 26');
+update public.properties p set cleaning_by = '房东自己'
+ where exists (select 1 from _own o where lower(regexp_replace(o.name,'[^a-zA-Z0-9]','','g')) = lower(regexp_replace(p.name,'[^a-zA-Z0-9]','','g')));
+
+create temp table _alisa(name text, fee numeric);
+insert into _alisa values ('Arcadia24',488),('Austral08',380),('Austral10',480),('Austral18',420),('Austral25',390),('Austral296',380),('Austral74',380),('Bankstown29',330),('Bankstown42',365),('barangaroo 19F',369),('Barangaroo 21b',229),('Barangaroo 30',369),('Barangaroo10D',369),('Barangaroo16E',228),('barangaroo6C',369),('Bardia173',350),('Bardia38',365),('BaulkhamHills42',428),('BaulkhamHills42 Long',628),('Belmore42Grannyflat',140),('Belmore42House',299),('Botany 109 entire',418),('Botany109A',249),('Botany109B',169),('Botany407A',299),('Boxhill 02',370),('Boxhill 07',370),('Boxhill 07 LONG',570),('Boxhill 61',420),('Burwood G04',180),('Burwood S1',150),('Burwood03',279),('BurwoodS2',120),('BurwoodS6',120),('Cammeray 08',210),('Canterbury 129',219),('Canterbury 521',219),('Carindale 13',399),('Carlingford36',175),('Castle Hill01',399),('CastleHIll83',289),('Casula 05',385),('CatherineField12',390),('Chatswood219',180),('Collaroy 51 downstairs',350),('Collaroy 51 entire',699),('DenhamCourt20',380),('DenhamCourt40',390),('EdmondsonPark45',365),('EdmondsonPark47',365),('Gable07Grannyflat',210),('Gordon 106',269),('Greenwich33',610),('Haymarket1707',330),('haymarket801',330),('HB02',385),('Hurstville 108B',279),('Hurstville 32',210),('Hurstville10',185),('JordanSpring10',390),('JordanSpring10 LONG',590),('Kellyville01',380),('KellyvilleB04',365),('KellyvilleB04 LONG',580),('KellyvilleC35',420),('Kingsgrove 163',480),('Leichhardt 27A',390),('Leppington03',390),('Leppington14',390),('Lidcombe1001',195),('Lidcombe613',279),('Lidcombe903',185),('liverpool 59',239),('liverpool1804',259),('Liverpool203',185),('Liverpool2101',259),('Liverpool305',259),('Macquarie Park 806',210),('Maraylya04',390),('Maraylya04Grannyflat',210),('Marrickville 01',238),('Marrickville 02',185),('Marrickville 03',238),('Marrickville 04',185),('Marrickville 05',238),('Marrickville 06',185),('MarsdenPark17',370),('Mascot17',289),('North Bondi 126',350),('Olympic Park 3406',185),('Panania 26',390),('Parramatta 06',259),('Parramatta 3708',259),('Parramatta101',279),('Parramatta1405a',279),('Penrith101',289),('prymont715',185),('Putney166Entire',849),('Pymble27',520),('Pymble27 LONG',720),('pyrmont216',185),('Pyrmont240',165),('Redfern 302',279),('Rhodes 2908',299),('Riverwood 7A entire',480),('Riverwood 7A 楼上',310),('Riverwood 7A 楼下',299),('Rosebery305',248),('Rousehill145',380),('Rousehill145 long',580),('Rousehill24',365),('Rousehill26',390),('Ryde 143',279),('Ryde 313',279),('StMarys15',279),('Strathfield 03',699),('Strathfield 203',279),('Sydney 188',310),('Sydney 410',310),('Sydney1306',259),('Tallawong38',410),('Taren point 56a',799),('ThePond53',380),('Turramurra 51',400),('ultimo105',338),('Wahroonga 181granny',269),('Waitara 17',279),('Waterloo311',259),('Werrington 07',365),('WWP9028',289),('Zetland126',269),('Mascot17 Long(长订单清洁+50)',339);
+insert into public.cleaning_fees(property_id, standard_fee, effective_date)
+select p.id, a.fee, current_date
+  from _alisa a join public.properties p on lower(regexp_replace(a.name,'[^a-zA-Z0-9]','','g')) = lower(regexp_replace(p.name,'[^a-zA-Z0-9]','','g'))
+on conflict (property_id, effective_date) do update set standard_fee = excluded.standard_fee;
+
+-- 对不上名字的（系统里没有同名房源），方便你核对：
+select a.name as 表里的房源名, a.fee as 付Alisa
+  from _alisa a where not exists (select 1 from public.properties p where lower(regexp_replace(a.name,'[^a-zA-Z0-9]','','g')) = lower(regexp_replace(p.name,'[^a-zA-Z0-9]','','g')))
+ order by 1;

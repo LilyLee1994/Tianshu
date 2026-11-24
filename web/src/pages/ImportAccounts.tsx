@@ -75,56 +75,6 @@ function parse(wb: XLSX.WorkBook): Row[] {
   return out
 }
 
-const normName = (x: unknown) => String(x ?? '').toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]/g, '')
-
-// 清洁费表：AIRBNB 列 = 向客人收取，ALISA 列 = 付 Alisa；标了“房东自己”的房源改成房东自己清洁
-function CleaningImport() {
-  const [busy, setBusy] = useState(false)
-  const [msg, setMsg] = useState('')
-  const onFile = async (f: File) => {
-    setBusy(true); setMsg('')
-    try {
-      const wb = XLSX.read(await f.arrayBuffer())
-      const ws = wb.Sheets[wb.SheetNames.find((n) => XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[n], { header: 1, raw: true, defval: '' }).slice(0, 5).some((r) => (r as unknown[]).includes('Listing'))) ?? '']
-      if (!ws) { setMsg('没有找到带 Listing 列的表。'); setBusy(false); return }
-      const aoa = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: true, defval: '' })
-      const hi = aoa.findIndex((r) => r.includes('Listing'))
-      const H = aoa[hi] as string[]
-      const col = (k: string) => H.findIndex((h) => String(h).trim().toUpperCase() === k)
-      const cL = col('LISTING'), cA = col('AIRBNB'), cB = col('ALISA')
-      const { data: ps } = await supabase.from('properties').select('id, name').limit(2000)
-      const byName = new Map((ps ?? []).map((x) => [normName(x.name), x.id as number]))
-      const num = (v: unknown) => (typeof v === 'number' && v > 0 ? v : null)
-      const today = new Date().toISOString().slice(0, 10)
-      let ok = 0, own = 0
-      const miss: string[] = []
-      for (const r of aoa.slice(hi + 1)) {
-        const name = String(r[cL] ?? '').trim()
-        if (!name) continue
-        const pid = byName.get(normName(name))
-        if (!pid) { miss.push(name); continue }
-        const a = num(r[cA]), l = num(r[cB])
-        if (a != null || l != null) {
-          const { error } = await supabase.from('cleaning_fees').upsert({ property_id: pid, guest_fee: a, standard_fee: l, effective_date: today }, { onConflict: 'property_id,effective_date' })
-          if (error) { setMsg(`写入 ${name} 失败：${error.message}（是否已运行 028 迁移？）`); setBusy(false); return }
-          ok++
-        }
-        if (r.some((x) => typeof x === 'string' && x.includes('房东自己'))) { await supabase.from('properties').update({ cleaning_by: '房东自己' }).eq('id', pid); own++ }
-      }
-      setMsg(`导入了 ${ok} 个房源的清洁费${own ? `，${own} 个标为房东自己清洁` : ''}。${miss.length ? `系统里找不到这 ${miss.length} 个：${miss.join('、')}` : ''}`)
-    } catch (e) { setMsg(`读取失败：${(e as Error).message}`) }
-    setBusy(false)
-  }
-  return (
-    <section className="card" style={{ marginBottom: 16 }}>
-      <h3 style={{ marginTop: 0 }}>6. 清洁费表</h3>
-      <p className="muted small">选清洁费那张表（有 Listing、AIRBNB、ALISA 列）。AIRBNB 列记为“向客人收取”，ALISA 列记为“付 Alisa”，标了“房东自己清洁”的房源改成房东自己。向客人收取的价格之后会随 Hostaway 自动更新。</p>
-      <label className="ghost" style={{ cursor: 'pointer' }}>{busy ? '导入中…' : '选择清洁费表'}<input type="file" accept=".xlsx,.xls" hidden disabled={busy} onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = '' }} /></label>
-      {msg && <p>{msg}</p>}
-    </section>
-  )
-}
-
 export default function ImportAccounts() {
   const [rows, setRows] = useState<Row[]>([])
   const [admin, setAdmin] = useState<CompanyRow[]>([])
@@ -299,7 +249,6 @@ export default function ImportAccounts() {
           {adminMsg && <p>{adminMsg}</p>}
         </section>
       )}
-      <CleaningImport />
       {offline.length > 0 && (
         <section className="card" style={{ marginBottom: 16 }}>
           <h3 style={{ marginTop: 0 }}>5. 已下线账号（用来查老账号的密码）</h3>
