@@ -141,6 +141,7 @@ export default function Onboarding() {
               {isOpen && (
                 <div className="ob-body">
                   <table className="ob-tbl">
+                    <colgroup><col style={{ width: 40 }} /><col style={{ width: 200 }} /><col style={{ width: 190 }} /><col style={{ width: 130 }} /><col /><col style={{ width: 76 }} /></colgroup>
                     <thead><tr><th>#</th><th>步骤</th><th>对接人 / 跟进人</th><th>进度</th><th>备注</th><th></th></tr></thead>
                     <tbody>{st.map((s) => (
                       <tr key={s.id}>

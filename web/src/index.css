@@ -139,7 +139,9 @@ td .ghost, td button.ghost { white-space: nowrap; }
 .ob-bar i { display: block; height: 100%; background: #0f6b66; }
 .ob-next { margin-left: auto; }
 .ob-body { padding: 4px 16px 16px; border-top: 1px solid #eef1f4; overflow-x: auto; }
-.ob-tbl { min-width: 760px; }
+.ob-tbl { min-width: 900px; table-layout: fixed; }
 .ob-tbl th, .ob-tbl td { padding: 8px 10px; vertical-align: top; }
 .ob-tbl input, .ob-tbl select { min-height: 34px; padding: 0 10px; font-size: 13px; border-radius: 8px; width: 100%; }
 .ob-tbl select { padding: 0 8px; }
+
+.ob-tbl td:nth-child(2) { word-break: break-word; }
