@@ -9,7 +9,7 @@ import { HistoryModal } from '../lib/History'
 interface Details {
   bedrooms: number | null; bathrooms: number | null; max_guests: number | null; beds: string | null; appliances: string[]
   lock_location: string | null; lock_code: string | null; wifi_name: string | null; wifi_password: string | null
-  parking: string | null; bin_day: string | null; notes: string | null; guidebook_url?: string | null
+  parking: string | null; bin_day: string | null; notes: string | null; guidebook_url?: string | null; stra_number?: string | null
 }
 interface Contract {
   water: string; power: string; gas: string; internet: string; recharge_back: string
@@ -357,6 +357,7 @@ function Detail({ row: r, canEdit, isAdmin, onEdit, onChanged }: { row: Row; can
         <dt>锁盒</dt><dd>{dash(d?.lock_location)} / {dash(d?.lock_code)}</dd>
         <dt>WiFi</dt><dd>{dash(d?.wifi_name)} / {dash(d?.wifi_password)}</dd>
         <dt>停车 / 垃圾日</dt><dd>{dash(d?.parking)} / {dash(d?.bin_day)}</dd>
+        <dt>STRA 编号</dt><dd>{d?.stra_number ? <>{d.stra_number}<Copy text={d.stra_number} /></> : '—'}</dd>
         <dt>Guidebook</dt><dd>{d?.guidebook_url ? <a href={d.guidebook_url} target="_blank" rel="noreferrer">打开</a> : '—'}</dd>
         <dt>注意事项</dt><dd>{dash(d?.notes)}</dd>
         {!r.legacy && <>
@@ -384,7 +385,7 @@ function EditForm({ row, isAdmin, assistants, onCancel, onSaved }: { row: Row; i
     bedrooms: d?.bedrooms?.toString() ?? '', bathrooms: d?.bathrooms?.toString() ?? '', max_guests: d?.max_guests?.toString() ?? '',
     beds: d?.beds ?? '', appliances: (d?.appliances ?? []).join('，'),
     lock_location: d?.lock_location ?? '', lock_code: d?.lock_code ?? '', wifi_name: d?.wifi_name ?? '', wifi_password: d?.wifi_password ?? '',
-    parking: d?.parking ?? '', bin_day: d?.bin_day ?? '', notes: d?.notes ?? '', guidebook_url: d?.guidebook_url ?? '',
+    parking: d?.parking ?? '', bin_day: d?.bin_day ?? '', notes: d?.notes ?? '', guidebook_url: d?.guidebook_url ?? '', stra_number: d?.stra_number ?? '',
   })
   const [ct, setCt] = useState({
     water: c?.water ?? '未填', power: c?.power ?? '未填', gas: c?.gas ?? '未填', internet: c?.internet ?? '未填',
@@ -403,7 +404,7 @@ function EditForm({ row, isAdmin, assistants, onCancel, onSaved }: { row: Row; i
         bedrooms: num(dt.bedrooms), bathrooms: num(dt.bathrooms), max_guests: num(dt.max_guests), beds: txt(dt.beds),
         appliances: dt.appliances.split(/[,，、]/).map((x) => x.trim()).filter(Boolean),
         lock_location: txt(dt.lock_location), lock_code: txt(dt.lock_code), wifi_name: txt(dt.wifi_name), wifi_password: txt(dt.wifi_password),
-        parking: txt(dt.parking), bin_day: txt(dt.bin_day), notes: txt(dt.notes), guidebook_url: txt(dt.guidebook_url),
+        parking: txt(dt.parking), bin_day: txt(dt.bin_day), notes: txt(dt.notes), guidebook_url: txt(dt.guidebook_url), stra_number: txt(dt.stra_number),
       }).eq('property_id', row.id).select('property_id'),
     ]
     if (!row.legacy) jobs.push(supabase.from('property_contracts').update({ ...ct, end_date: ct.end_date || null }).eq('property_id', row.id).select('property_id'))
@@ -452,6 +453,7 @@ function EditForm({ row, isAdmin, assistants, onCancel, onSaved }: { row: Row; i
         {f('WiFi 密码', dt.wifi_password, (v) => setDt({ ...dt, wifi_password: v }))}
         {f('停车', dt.parking, (v) => setDt({ ...dt, parking: v }))}
         {f('收垃圾日', dt.bin_day, (v) => setDt({ ...dt, bin_day: v }))}
+        {f('STRA 编号', dt.stra_number, (v) => setDt({ ...dt, stra_number: v }))}
         {f('Guidebook 链接', dt.guidebook_url, (v) => setDt({ ...dt, guidebook_url: v }))}
         {f('注意事项', dt.notes, (v) => setDt({ ...dt, notes: v }), true)}
       </div>

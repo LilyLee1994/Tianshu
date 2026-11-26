@@ -15,14 +15,16 @@ export default function Onboarding() {
   const [show, setShow] = useState<'doing' | 'done'>('doing')
   const [adding, setAdding] = useState(false)
   const [err, setErr] = useState('')
+  const [stra, setStra] = useState<Record<number, string>>({})
 
   const load = useCallback(async () => {
-    const [s, p] = await Promise.all([
+    const [s, p, d] = await Promise.all([
       supabase.from('onboarding_steps').select('*').order('property_id').order('seq').limit(5000),
       supabase.from('properties').select('id, name, assistant_id, assistant:profiles!assistant_id(name)').order('name').limit(2000),
+      supabase.from('property_details').select('property_id, stra_number').not('stra_number', 'is', null).limit(3000),
     ])
     if (s.error) setErr(`读取出错：${s.error.message}（是否已运行 039 迁移？）`); else setErr('')
-    setSteps((s.data ?? []) as Step[]); setProps((p.data ?? []) as never as Prop[])
+    setStra(Object.fromEntries(((d.data ?? []) as { property_id: number; stra_number: string }[]).map((x) => [x.property_id, x.stra_number]))); setSteps((s.data ?? []) as Step[]); setProps((p.data ?? []) as never as Prop[])
   }, [])
   useEffect(() => { load() }, [load])
 
@@ -42,6 +44,20 @@ export default function Onboarding() {
     setSteps((x) => x.map((s) => s.id === id ? { ...s, ...v, ...(v.status ? { done_at: v.status === '已完成' ? new Date().toISOString() : null } : {}) } : s))
     const { error } = await supabase.from('onboarding_steps').update(body).eq('id', id)
     if (error) { setErr(error.message); load() }
+  }
+  // 注册 STRA 这一步：填了编号就同步到房源档案，并自动标为已完成；没编号不能标完成
+  const isStra = (s: Step) => /stra/i.test(s.name)
+  const saveStra = async (s: Step, v: string) => {
+    const val = v.trim()
+    if (val === (stra[s.property_id] ?? '')) return
+    const { error } = await supabase.from('property_details').upsert({ property_id: s.property_id, stra_number: val || null }, { onConflict: 'property_id' })
+    if (error) { setErr(error.code === '42703' ? '保存失败：还没运行 040 迁移。' : `STRA 保存失败：${error.message}`); return }
+    setErr(''); setStra((x) => ({ ...x, [s.property_id]: val }))
+    if (val && s.status !== '已完成') patch(s.id, { status: '已完成' })
+  }
+  const changeStatus = (s: Step, status: string) => {
+    if (isStra(s) && status === '已完成' && !stra[s.property_id]) { setErr('完成「注册 STRA」要先填 STRA 编号。'); return }
+    setErr(''); patch(s.id, { status })
   }
   const start = async (pid: number) => {
     const { data: tpl, error } = await supabase.from('onboarding_template').select('seq, name, owner').order('seq')
@@ -100,9 +116,11 @@ export default function Onboarding() {
                       <tr key={s.id}>
                         <td>{s.seq}</td><td>{s.name}</td>
                         <td><input defaultValue={s.owner ?? ''} disabled={!canEdit} onBlur={(e) => e.target.value !== (s.owner ?? '') && patch(s.id, { owner: e.target.value.trim() || null })} /></td>
-                        <td><select value={s.status} disabled={!canEdit} style={{ color: stColor(s.status), fontWeight: 600 }} onChange={(e) => patch(s.id, { status: e.target.value })}>{STATUSES.map((x) => <option key={x}>{x}</option>)}</select>
+                        <td><select value={s.status} disabled={!canEdit} style={{ color: stColor(s.status), fontWeight: 600 }} onChange={(e) => changeStatus(s, e.target.value)}>{STATUSES.map((x) => <option key={x}>{x}</option>)}</select>
                           {s.done_at && <div className="muted small">{s.done_at.slice(5, 10)}</div>}</td>
-                        <td><input defaultValue={s.note ?? ''} disabled={!canEdit} placeholder="备注" onBlur={(e) => e.target.value !== (s.note ?? '') && patch(s.id, { note: e.target.value.trim() || null })} /></td>
+                        <td>
+                          {isStra(s) && <input key={`stra${stra[s.property_id] ?? ''}`} style={{ marginBottom: 6, fontWeight: 600 }} defaultValue={stra[s.property_id] ?? ''} disabled={!canEdit} placeholder="填 STRA 编号（会同步到房源档案）" onBlur={(e) => saveStra(s, e.target.value)} />}
+                          <input defaultValue={s.note ?? ''} disabled={!canEdit} placeholder="备注" onBlur={(e) => e.target.value !== (s.note ?? '') && patch(s.id, { note: e.target.value.trim() || null })} /></td>
                         <td><button className="task-btn" onClick={() => delStep(s)}>删除</button></td>
                       </tr>
                     ))}</tbody>
