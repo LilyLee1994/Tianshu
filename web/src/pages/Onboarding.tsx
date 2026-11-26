@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom'
 
 const STATUSES = ['未完成', '进行中', '已完成']
 interface Step { id: number; property_id: number; seq: number; name: string; owner: string | null; status: string; note: string | null; done_at: string | null }
-interface Prop { id: number; name: string; assistant_id: string | null; assistant: { name: string } | null }
+interface Prop { id: number; name: string; assistant_id: string | null; hostaway_id: number | null; assistant: { name: string } | null }
 const stColor = (s: string) => (s === '已完成' ? '#1f6b34' : s === '进行中' ? '#14507a' : '#9a5a00')
 
 export default function Onboarding() {
@@ -26,7 +26,7 @@ export default function Onboarding() {
     supabase.from('profiles').select('name').eq('role', 'assistant').eq('active', true).order('name').then(({ data }) => setAssistants((data ?? []).map((x) => x.name as string)))
     const [s, p, d, d2] = await Promise.all([
       supabase.from('onboarding_steps').select('*').order('property_id').order('seq').limit(5000),
-      supabase.from('properties').select('id, name, assistant_id, assistant:profiles!assistant_id(name)').order('name').limit(2000),
+      supabase.from('properties').select('id, name, assistant_id, hostaway_id, assistant:profiles!assistant_id(name)').order('name').limit(2000),
       supabase.from('property_details').select('property_id, guidebook_url').limit(3000),
       supabase.from('property_details').select('property_id, stra_number').limit(3000),
     ])
@@ -104,10 +104,10 @@ export default function Onboarding() {
     if (isProfile(s) && status === '已完成' && (missing[s.property_id]?.length ?? 1) > 0) { setErr(`房源档案还没填齐：${(missing[s.property_id] ?? []).join('、')}。`); return }
     setErr(''); patch(s.id, { status })
   }
-  const start = async (pid: number) => {
+  const start = async (pid: number, live: boolean) => {
     const { data: tpl, error } = await supabase.from('onboarding_template').select('seq, name, owner').order('seq')
     if (error || !tpl?.length) { setErr(error?.message ?? '上线步骤模板是空的。'); return }
-    const { error: e2 } = await supabase.from('onboarding_steps').insert(tpl.map((t) => ({ property_id: pid, seq: t.seq, name: t.name, owner: t.owner === '主责助理' ? (props.find((x) => x.id === pid)?.assistant?.name ?? '待分配') : t.owner })))
+    const { error: e2 } = await supabase.from('onboarding_steps').insert(tpl.map((t) => ({ property_id: pid, seq: t.seq, name: t.name, owner: t.owner === '主责助理' ? (props.find((x) => x.id === pid)?.assistant?.name ?? '待分配') : t.owner, ...(live && t.name === '上线' ? { status: '已完成', done_at: new Date().toISOString() } : {}) })))
     if (e2) { setErr(e2.message); return }
     setAdding(false); setShow('doing'); setOpen(pid); load()
   }
@@ -199,17 +199,20 @@ export default function Onboarding() {
   )
 }
 
-function StartModal({ props, onClose, onStart }: { props: Prop[]; onClose: () => void; onStart: (id: number) => void }) {
+function StartModal({ props, onClose, onStart }: { props: Prop[]; onClose: () => void; onStart: (id: number, live: boolean) => void }) {
   const [q, setQ] = useState('')
+  const [live, setLive] = useState<boolean | null>(null)
   const list = props.filter((p) => !q || p.name.toLowerCase().includes(q.toLowerCase())).slice(0, 30)
   return (
     <div className="modal-bg" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h2>开始上线新房源</h2>
         <p className="muted small" style={{ margin: 0 }}>选一套房源，系统会按标准流程（签合同 → 注册 STRA → 软装 → … → Guidebook → 上线）生成每一步。房源要先在“房源档案”里新增。</p>
+        <label className="check"><input type="checkbox" checked={live ?? false} onChange={(e) => setLive(e.target.checked)} />这套房早就在运营了，现在是补流程（「上线」直接记为已完成，运营阶段不变）</label>
+        <p className="muted small" style={{ margin: 0 }}>{live === null ? '不勾的话：已关联 Hostaway 的房源会按“已在运营”处理，其余按新房源处理。' : live ? '按“已在运营”处理。' : '按新房源处理，运营阶段会设为“筹备中”。'}</p>
         <input autoFocus placeholder="搜索房源名称" value={q} onChange={(e) => setQ(e.target.value)} />
         <div className="side-list" style={{ width: 'auto', position: 'static', maxHeight: 300 }}>
-          {list.map((p) => <button key={p.id} className="item" onClick={() => onStart(p.id)}>{p.name}<span className="muted small">{p.assistant?.name ?? ''}</span></button>)}
+          {list.map((p) => <button key={p.id} className="item" onClick={() => onStart(p.id, live ?? !!p.hostaway_id)}>{p.name}{p.hostaway_id ? <span className="chip green">Hostaway 已关联</span> : null}<span className="muted small">{p.assistant?.name ?? ''}</span></button>)}
           {!list.length && <p className="muted small">没有找到，或者这套房已经在上线流程里了。</p>}
         </div>
         <div className="btn-row"><button className="ghost" onClick={onClose}>取消</button></div>
