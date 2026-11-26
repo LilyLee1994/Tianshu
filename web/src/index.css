@@ -128,3 +128,18 @@ td .ghost, td button.ghost { white-space: nowrap; }
 .money-tbl th, .money-tbl td { padding: 7px 12px; }
 .money-tbl thead th { position: sticky; top: 0; background: #f4f6f8; }
 .money-tbl tr:last-child td { border-bottom: 0; }
+
+/* 新房源上线流程 */
+.ob-list { display: flex; flex-direction: column; gap: 10px; }
+.ob-card { background: #fff; border: 1px solid #e1e5ea; border-radius: 10px; overflow: hidden; }
+.ob-head { width: 100%; display: flex; align-items: center; gap: 14px; padding: 14px 16px; border: 0; background: transparent; text-align: left; }
+.ob-head:hover { background: #f7f9fa; }
+.ob-name { font-weight: 700; font-size: 15px; min-width: 160px; }
+.ob-bar { flex: 0 0 140px; height: 8px; border-radius: 4px; background: #e6ebef; overflow: hidden; }
+.ob-bar i { display: block; height: 100%; background: #0f6b66; }
+.ob-next { margin-left: auto; }
+.ob-body { padding: 4px 16px 16px; border-top: 1px solid #eef1f4; overflow-x: auto; }
+.ob-tbl { min-width: 760px; }
+.ob-tbl th, .ob-tbl td { padding: 8px 10px; vertical-align: top; }
+.ob-tbl input, .ob-tbl select { min-height: 34px; padding: 0 10px; font-size: 13px; border-radius: 8px; width: 100%; }
+.ob-tbl select { padding: 0 8px; }

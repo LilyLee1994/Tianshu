@@ -44,7 +44,8 @@ export default function Dashboard() {
       supabase.from('order_alerts').select('kind, detail, property:properties(name, assistant_id)').eq('status', '待处理').limit(200),
       profile?.role === 'admin' ? supabase.from('shift_requests').select('month, reason, user:profiles!shift_requests_user_id_fkey(name)').eq('status', '待审批').limit(50) : Promise.resolve({ data: [] }),
           profile?.role === 'assistant' ? coveredAssistantIds(profile.id) : Promise.resolve(new Set<string>()),
-    ]).then(([o, p, rv, ra, cl, sm, oa, sr, cov]) => {
+      supabase.from('onboarding_steps').select('property_id, seq, name, status, property:properties(name, assistant_id)').order('seq').limit(3000),
+    ]).then(([o, p, rv, ra, cl, sm, oa, sr, cov, ob]) => {
       const mine = (aid: string | null | undefined) => profile?.role !== 'assistant' || (!!aid && cov.has(aid))
       const tagOf = (aid: string | null | undefined) => (profile?.role === 'assistant' && aid && aid !== profile.id ? '（代班）' : '')
       const t: Todo[] = []
@@ -54,6 +55,16 @@ export default function Dashboard() {
       }
       for (const r of (sr.data ?? []) as unknown as { month: string; reason: string | null; user: { name: string } | null }[]) t.push({ tag: '排班', text: `${r.user?.name ?? '助理'} 申请变更 ${r.month.slice(0, 7)} 的排班：${r.reason || '（没写原因）'}`, to: '/shifts', cls: 'blue', lv: 'yellow' })
       for (const a of (oa.data ?? []) as unknown as { kind: string; detail: string; property: { name: string; assistant_id: string | null } | null }[]) if (mine(a.property?.assistant_id)) t.push({ tag: '订单异常', text: `${tagOf(a.property?.assistant_id)}${a.property?.name} · ${a.kind}：${a.detail}`, to: '/alerts', cls: 'purple', lv: 'red' })
+      // 新房源上线流程：每套还没走完的房源一张便签，写明进度和下一步
+      const obBy = new Map<number, { name: string; aid: string | null; st: { name: string; status: string }[] }>()
+      for (const x of (ob.data ?? []) as unknown as { property_id: number; name: string; status: string; property: { name: string; assistant_id: string | null } | null }[]) {
+        const e = obBy.get(x.property_id) ?? { name: x.property?.name ?? '', aid: x.property?.assistant_id ?? null, st: [] }
+        e.st.push({ name: x.name, status: x.status }); obBy.set(x.property_id, e)
+      }
+      for (const e of obBy.values()) {
+        const left = e.st.filter((s) => s.status !== '已完成')
+        if (left.length && mine(e.aid)) t.push({ tag: '上线流程', text: `${tagOf(e.aid)}${e.name} 上线进度 ${e.st.length - left.length}/${e.st.length}，下一步：${left[0].name}`, to: '/onboarding', cls: 'blue', lv: 'yellow' })
+      }
       let pending = 0, doing = 0
       for (const x of (o.data ?? []) as unknown as { status: string; type: string; description: string; property: { name: string } }[]) {
         const label = `${x.property?.name} · ${x.type} · ${x.description ?? ''}`
