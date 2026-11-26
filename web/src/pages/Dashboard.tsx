@@ -36,7 +36,7 @@ export default function Dashboard() {
   useEffect(() => {
     Promise.all([
       supabase.from('work_orders').select('status, type, description, property:properties(name)').not('status', 'in', '(已完成,已取消)'),
-      supabase.from('properties').select('name, property_contracts(*)').eq('legacy', false),
+      supabase.from('properties').select('id, name, assistant_id, property_contracts(*)').eq('legacy', false),
       supabase.from('reviews').select('id, channel_name, rating, reviewed_at, property:properties(name, assistant_id)').not('rating', 'is', null).gte('reviewed_at', new Date(Date.now() - 14 * 86400_000).toISOString()).order('reviewed_at', { ascending: false }).limit(500),
       supabase.from('review_actions').select('review_id, status').limit(5000),
       supabase.from('claims').select('content, property:properties(name, assistant_id)').eq('status', '待提交').limit(50),
@@ -91,9 +91,11 @@ export default function Dashboard() {
         else doing++
       }
       let incomplete = 0
-      for (const r of (p.data ?? []) as unknown as { name: string; property_contracts: never }[]) {
+      for (const r of (p.data ?? []) as unknown as { id: number; name: string; assistant_id: string | null; property_contracts: never }[]) {
         const c = r.property_contracts as { end_date: string | null } | null
         if (statusOf(c as never) === '待登记合同') { incomplete++; t.push({ tag: '合同', text: `${r.name} 水电燃气信息还没填完整，填完才能上线`, to: '/properties', cls: 'amber', lv: 'yellow' }) }
+        // 资料填齐、运营阶段还是“筹备中”：可以上线了，提醒负责的助理去上线
+        if (statusOf(c as never) === '可上线' && mine(r.assistant_id)) t.push({ tag: '可上线', text: `${tagOf(r.assistant_id)}${r.name} 资料已填齐，可以上线了；上线后把运营阶段改为“运营中”`, to: `/properties?id=${r.id}`, cls: 'blue', lv: 'orange' })
         const d = daysTo(c?.end_date ?? null)
         if (d !== null && d >= 0 && d <= 60) t.push({ tag: '到期', text: `${r.name} 合同 ${d} 天后到期`, to: '/contracts', cls: 'amber', lv: d <= 7 ? 'red' : d <= 30 ? 'orange' : 'yellow' })
       }
