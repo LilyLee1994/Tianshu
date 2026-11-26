@@ -72,13 +72,16 @@ export default function Dashboard() {
         }
       }
       const myName = (profile?.name ?? '').trim().toLowerCase()
+      const stepNotes: { pid: number; isLaunch: boolean; todo: Todo }[] = []
+      const launchMine = new Set<number>()   // 我是「上线」这一步的对接人的房源
       if (myName) {
         for (const x of obRows) {
           if (x.status === '已完成') continue
           const who = (x.owner ?? '').split(/[、,，/；;]+/).map((n) => n.trim().toLowerCase())
           if (!who.includes(myName)) continue
+          if (x.name === '上线') launchMine.add(x.property_id)
           const hint = /guidebook/i.test(x.name) ? '，请填 Guidebook 链接' : /stra/i.test(x.name) ? '，请填 STRA 编号' : /房源档案|个体表/.test(x.name) ? '，请完善房源档案' : ''
-          t.push({ tag: `上线 · ${x.status}`, text: `${x.property?.name} · ${x.name}${hint}`, to: '/onboarding', cls: 'blue', lv: x.status === '进行中' ? 'yellow' : 'orange' })
+          stepNotes.push({ pid: x.property_id, isLaunch: x.name === '上线', todo: { tag: `上线 · ${x.status}`, text: `${x.property?.name} · ${x.name}${hint}`, to: '/onboarding', cls: 'blue', lv: x.status === '进行中' ? 'yellow' : 'orange' } })
         }
       }
       let pending = 0, doing = 0
@@ -91,14 +94,17 @@ export default function Dashboard() {
         else doing++
       }
       let incomplete = 0
+      const readySet = new Set<number>()   // 已经出了「可上线」便签的房源
       for (const r of (p.data ?? []) as unknown as { id: number; name: string; assistant_id: string | null; property_contracts: never }[]) {
         const c = r.property_contracts as { end_date: string | null } | null
         if (statusOf(c as never) === '待登记合同') { incomplete++; t.push({ tag: '合同', text: `${r.name} 水电燃气信息还没填完整，填完才能上线`, to: '/properties', cls: 'amber', lv: 'yellow' }) }
         // 资料填齐、运营阶段还是“筹备中”：可以上线了，提醒负责的助理去上线
-        if (statusOf(c as never) === '可上线' && mine(r.assistant_id)) t.push({ tag: '可上线', text: `${tagOf(r.assistant_id)}${r.name} 资料已填齐，可以上线了；上线后把运营阶段改为“运营中”`, to: `/properties?id=${r.id}`, cls: 'blue', lv: 'orange' })
+        if (statusOf(c as never) === '可上线' && (mine(r.assistant_id) || launchMine.has(r.id))) { readySet.add(r.id); t.push({ tag: '可上线', text: `${tagOf(r.assistant_id)}${r.name} 资料已填齐，可以上线了；上线后把运营阶段改为“运营中”`, to: `/properties?id=${r.id}`, cls: 'blue', lv: 'orange' }) }
         const d = daysTo(c?.end_date ?? null)
         if (d !== null && d >= 0 && d <= 60) t.push({ tag: '到期', text: `${r.name} 合同 ${d} 天后到期`, to: '/contracts', cls: 'amber', lv: d <= 7 ? 'red' : d <= 30 ? 'orange' : 'yellow' })
       }
+      // 「可上线」便签和「上线」步骤便签是同一件事，合并成一张：有「可上线」就不再出「上线」那张
+      for (const n of stepNotes) if (!(n.isLaunch && readySet.has(n.pid))) t.push(n.todo)
       const done = new Set((ra.data ?? []).filter((a: { status: string }) => a.status !== '待处理').map((a: { review_id: number }) => a.review_id))
       for (const r of (rv.data ?? []) as unknown as { id: number; channel_name: string | null; rating: number; reviewed_at: string; property: { name: string; assistant_id: string | null } }[]) {
         if (!mine(r.property?.assistant_id)) continue
