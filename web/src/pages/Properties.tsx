@@ -509,7 +509,7 @@ function AddModal({ assistants, onClose, onSaved }: { assistants: Assistant[]; o
         <label>主责助理<select value={f.assistant_id} onChange={(e) => setF({ ...f, assistant_id: e.target.value })}>
           <option value="">先不分配</option>{assistants.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
         </select></label>
-        <label className="check"><input type="checkbox" checked={startOb} onChange={(e) => setStartOb(e.target.checked)} />同时开始上线流程（按标准的 10 步）</label>
+        <label className="check"><input type="checkbox" checked={startOb} onChange={(e) => setStartOb(e.target.checked)} />同时开始上线流程（按标准步骤）</label>
         {err && <div className="err">{err}</div>}
         <div className="btn-row">
           <button className="primary small-btn" disabled={busy} onClick={save}>{busy ? '保存中…' : '保存'}</button>

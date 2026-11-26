@@ -197,7 +197,7 @@ function StartModal({ props, onClose, onStart }: { props: Prop[]; onClose: () =>
     <div className="modal-bg" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h2>开始上线新房源</h2>
-        <p className="muted small" style={{ margin: 0 }}>选一套房源，系统会按标准流程（签合同 → 注册 STRA → 软装 → … → 上线 → 仓储）生成 10 个步骤。房源要先在“房源档案”里新增。</p>
+        <p className="muted small" style={{ margin: 0 }}>选一套房源，系统会按标准流程（签合同 → 注册 STRA → 软装 → … → Guidebook → 上线）生成每一步。房源要先在“房源档案”里新增。</p>
         <input autoFocus placeholder="搜索房源名称" value={q} onChange={(e) => setQ(e.target.value)} />
         <div className="side-list" style={{ width: 'auto', position: 'static', maxHeight: 300 }}>
           {list.map((p) => <button key={p.id} className="item" onClick={() => onStart(p.id)}>{p.name}<span className="muted small">{p.assistant?.name ?? ''}</span></button>)}

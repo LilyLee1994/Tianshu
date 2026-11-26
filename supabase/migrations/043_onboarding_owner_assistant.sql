@@ -4,3 +4,7 @@ update public.onboarding_template set owner = '主责助理' where name in ('Gui
 update public.onboarding_steps s
    set owner = coalesce((select pr.name from public.properties p join public.profiles pr on pr.id = p.assistant_id where p.id = s.property_id), '待分配')
  where s.name in ('Guidebook', '上线') and s.owner in ('客服', '主责助理');
+
+-- 去掉第 10 步「仓储」（模板和已经开始的流程里都删掉）
+delete from public.onboarding_template where name = '仓储';
+delete from public.onboarding_steps where name = '仓储';
