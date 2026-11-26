@@ -9,15 +9,15 @@ import { daysTo } from './Contracts'
 import { badOne } from './Reviews'
 import { openMonth, OPEN_DAY } from './Shifts'
 import { coveredAssistantIds } from '../lib/cover'
-import TaskList from './TaskList'
+import { useTasks, TaskNote, AddTask, taskLevel } from './TaskList'
 
 type Lv = 'red' | 'orange' | 'yellow' | 'blue'
 interface Todo { tag: string; text: string; to: string; cls: string; lv: Lv }
 const LV: { k: Lv; label: string; hint: string }[] = [
-  { k: 'red', label: '紧急', hint: '差评、订单异常、待派单、合同 7 天内到期' },
-  { k: 'orange', label: '尽快', hint: '索赔待提交、确认费用、通知房东、合同 30 天内到期' },
-  { k: 'yellow', label: '留意', hint: '确认完成、合同信息没填完、排班变更申请、合同 60 天内到期' },
-  { k: 'blue', label: '日常', hint: '排班填写提醒' },
+  { k: 'red', label: '紧急', hint: '差评、订单异常、待派单、合同 7 天内到期、优先级高的待办' },
+  { k: 'orange', label: '尽快', hint: '索赔待提交、确认费用、通知房东、合同 30 天内到期、已过期的待办' },
+  { k: 'yellow', label: '留意', hint: '确认完成、合同信息没填完、排班变更申请、合同 60 天内到期、优先级中的待办' },
+  { k: 'blue', label: '日常', hint: '排班填写提醒、优先级低的待办' },
 ]
 
 export default function Dashboard() {
@@ -29,6 +29,7 @@ export default function Dashboard() {
   useEffect(() => { loadRun() }, [])
   const syncNow = () => startSync(loadRun)
   const [todos, setTodos] = useState<Todo[]>([])
+  const { tasks, people, err: taskErr, setErr: setTaskErr, load: loadTasks } = useTasks()
   const [stats, setStats] = useState({ pending: 0, doing: 0, incomplete: 0 })
   const [loading, setLoading] = useState(true)
 
@@ -97,19 +98,23 @@ export default function Dashboard() {
           {sync.msg && <p className="small" style={{ margin: '8px 0 0' }}>{sync.msg}</p>}
         </div>
       )}
-      <div className="title-row"><h2 style={{ margin: 0 }}>今天要处理的</h2>
-        <span className="lv-legend">{LV.map((l) => <span key={l.k} className={`lv-dot ${l.k}`} title={l.hint}>{l.label} {todos.filter((t) => t.lv === l.k).length}</span>)}</span>
+      <div className="title-row"><h2 style={{ margin: 0 }}>待处理</h2>
+        <span className="lv-legend">{LV.map((l) => <span key={l.k} className={`lv-dot ${l.k}`} title={l.hint}>{l.label} {todos.filter((t) => t.lv === l.k).length + tasks.filter((t) => taskLevel(t) === l.k).length}</span>)}</span>
       </div>
+      <div style={{ margin: '10px 0 0' }}><AddTask people={people} onAdded={loadTasks} onErr={setTaskErr} /></div>
+      {taskErr && <p className="error">{taskErr}</p>}
       <div className="notes">
-        {todos.map((t, i) => (
-          <button key={i} className={`note ${t.lv}`} onClick={() => nav(t.to)}>
-            <span className="note-tag">{t.tag}</span>
-            <span className="note-text">{t.text}</span>
-          </button>
-        ))}
-        {!todos.length && <p className="muted">暂时没有待办。</p>}
+        {[...LV.map((l) => l.k)].flatMap((k) => [
+          ...todos.filter((t) => t.lv === k).map((t, i) => (
+            <button key={`s${k}${i}`} className={`note ${t.lv}`} onClick={() => nav(t.to)}>
+              <span className="note-tag">{t.tag}</span>
+              <span className="note-text">{t.text}</span>
+            </button>
+          )),
+          ...tasks.filter((t) => taskLevel(t) === k).sort((a, b) => a.due_at.localeCompare(b.due_at)).map((t) => <TaskNote key={`t${t.id}`} t={t} onChanged={loadTasks} onErr={setTaskErr} />),
+        ])}
+        {!todos.length && !tasks.length && <p className="muted">暂时没有要处理的。</p>}
       </div>
-      <TaskList />
     </div>
   )
 }

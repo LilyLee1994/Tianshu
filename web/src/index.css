@@ -98,3 +98,6 @@ td .ghost, td button.ghost { white-space: nowrap; }
 .note-tag { font-size: 12px; font-weight: 600; opacity: .75; }
 .note.red .note-tag { color: #a3271c; } .note.orange .note-tag { color: #9a5a00; } .note.yellow .note-tag { color: #7a6400; } .note.blue .note-tag { color: #14507a; }
 .note-text { font-size: 14px; line-height: 1.45; color: #1d2b2a; word-break: break-word; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+
+.note.task { cursor: default; }
+.note.task:hover { transform: none; box-shadow: 0 2px 4px rgba(20,48,47,.12); }
