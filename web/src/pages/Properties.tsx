@@ -106,7 +106,7 @@ export default function Properties() {
     <div>
       <div className="title-row">
         <h1>房源档案</h1>
-        {isAdmin && <span className="btn-row" style={{ margin: 0 }}><button className="ghost" disabled={syncing} onClick={sync}>{syncing ? '同步中…' : '从 Hostaway 同步'}</button><button className="primary small-btn" onClick={() => { setAdding(true); setEditing(false) }}>＋ 新增房源</button></span>}
+        {(isAdmin || isAssistant) && <span className="btn-row" style={{ margin: 0 }}>{isAdmin && <button className="ghost" disabled={syncing} onClick={sync}>{syncing ? '同步中…' : '从 Hostaway 同步'}</button>}<button className="primary small-btn" onClick={() => { setAdding(true); setEditing(false) }}>＋ 新增房源</button></span>}
       </div>
       {msg && <div className="ok">{msg}</div>}
       {syncErr && <div className="err-box">{syncErr}</div>}
@@ -154,7 +154,7 @@ export default function Properties() {
         </div>
       )}
 
-      {adding && <AddModal assistants={assistants} onClose={() => setAdding(false)} onSaved={(n, ob) => afterSave(`已新增房源 ${n}，请补充基本情况和合同。${ob}`)} />}
+      {adding && <AddModal assistants={assistants} meId={isAssistant ? profile?.id ?? '' : ''} onClose={() => setAdding(false)} onSaved={(n, ob) => afterSave(`已新增房源 ${n}，请补充基本情况和合同。${ob}`)} />}
     </div>
   )
 }
@@ -477,8 +477,8 @@ function EditForm({ row, isAdmin, assistants, onCancel, onSaved }: { row: Row; i
   )
 }
 
-function AddModal({ assistants, onClose, onSaved }: { assistants: Assistant[]; onClose: () => void; onSaved: (name: string, obNote: string) => void }) {
-  const [f, setF] = useState({ name: '', address: '', region: '', assistant_id: '' })
+function AddModal({ assistants, meId, onClose, onSaved }: { assistants: Assistant[]; meId: string; onClose: () => void; onSaved: (name: string, obNote: string) => void }) {
+  const [f, setF] = useState({ name: '', address: '', region: '', assistant_id: meId })
   const [startOb, setStartOb] = useState(true)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -506,9 +506,9 @@ function AddModal({ assistants, onClose, onSaved }: { assistants: Assistant[]; o
         <label>房源名称（必填）<input autoFocus value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></label>
         <label>地址<input value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} /></label>
         <label>区域<input value={f.region} onChange={(e) => setF({ ...f, region: e.target.value })} /></label>
-        <label>主责助理<select value={f.assistant_id} onChange={(e) => setF({ ...f, assistant_id: e.target.value })}>
+        {meId ? <p className="muted small" style={{ margin: 0 }}>新增的房源会分配给你。</p> : <label>主责助理<select value={f.assistant_id} onChange={(e) => setF({ ...f, assistant_id: e.target.value })}>
           <option value="">先不分配</option>{assistants.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-        </select></label>
+        </select></label>}
         <label className="check"><input type="checkbox" checked={startOb} onChange={(e) => setStartOb(e.target.checked)} />同时开始上线流程（按标准步骤）</label>
         {err && <div className="err">{err}</div>}
         <div className="btn-row">
