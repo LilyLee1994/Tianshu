@@ -59,7 +59,8 @@ export default async function handler(req: Req, res: Res) {
       const { data: existing } = await db.from('owner_statements').select('id, property_id, status, adjustment').eq('month', from)
       const ex = new Map((existing ?? []).map((x) => [x.property_id as number, x]))
 
-      let made = 0, kept = 0
+      let kept = 0
+      const out: Record<string, unknown>[] = []
       for (const pid of new Set([...inc.keys(), ...costs.keys(), ...claimsIn.keys(), ...reviewComp.keys()])) {
         const old = ex.get(pid)
         if (old && old.status !== '草稿') { kept++; continue }
@@ -71,10 +72,14 @@ export default async function handler(req: Req, res: Res) {
         const ownerCosts = r2(costs.get(pid) ?? 0), claimsAmt = r2(claimsIn.get(pid) ?? 0), revComp = r2(reviewComp.get(pid) ?? 0), adj = Number(old?.adjustment ?? 0)
         const payable = r2(e.rental - commission - platform - ownerCosts - revComp + claimsAmt + adj)
         const row = { property_id: pid, month: from, reservations: e.n, nights: e.nights, rental_income: r2(e.rental), commission_rate: cr, commission, platform_fee: platform, gst, owner_costs: ownerCosts, claims_in: claimsAmt, review_comp: revComp, payable, generated_at: new Date().toISOString() }
-        const { error } = await db.from('owner_statements').upsert(row, { onConflict: 'property_id,month' })
-        if (error) return res.status(500).json({ error: error.message })
-        made++
+        out.push(row)
       }
+      // 一次写一批（之前一套房写一次，房源多了会超时，只生成了前几十个）
+      for (let i = 0; i < out.length; i += 100) {
+        const { error } = await db.from('owner_statements').upsert(out.slice(i, i + 100), { onConflict: 'property_id,month' })
+        if (error) return res.status(500).json({ error: error.message })
+      }
+      const made = out.length
       return res.status(200).json({ ok: true, made, kept })
     }
 

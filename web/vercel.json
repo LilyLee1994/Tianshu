@@ -27,6 +27,9 @@
     "api/cron-hostaway.ts": {
       "maxDuration": 60
     },
+    "api/statements.ts": {
+      "maxDuration": 30
+    },
     "api/hostaway-inventory.ts": {
       "maxDuration": 30
     }
