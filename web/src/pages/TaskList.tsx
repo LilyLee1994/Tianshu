@@ -7,13 +7,13 @@ export interface Task { priority: string; closed_at: string | null; id: number; 
 export interface Person { id: string; name: string }
 const STATUS = ['未开始', '进行中', '已完成']
 const PRIO = ['高', '中', '低']
-// 北京现在的时间，格式 2026-11-26T14:30，用来判断有没有过期（时间都按北京时间填）
-const nowBJ = () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date()).replace(' ', 'T')
-const show = (s: string) => s.slice(5, 16).replace('T', ' ')
+// 北京今天的日期，格式 2026-11-26，用来判断有没有过期（日期按北京时间；到期当天不算过期）
+const todayBJ = () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
+const show = (s: string) => s.slice(5, 10)
 
 // 便签颜色：优先级高=红，中=黄，低=蓝；过了时间还没完成的，中、低升一档到橙色
 export function taskLevel(t: Task): Lv {
-  const late = t.status !== '已完成' && t.due_at.slice(0, 16) < nowBJ()
+  const late = t.status !== '已完成' && t.due_at.slice(0, 10) < todayBJ()
   if (t.priority === '高') return 'red'
   if (late) return 'orange'
   return t.priority === '中' ? 'yellow' : 'blue'
@@ -44,13 +44,13 @@ export function TaskNote({ t, onChanged, onErr }: { t: Task; onChanged: () => vo
   const mine = t.created_by === profile?.id
   // 状态只有被指派的人能改；没指定负责人的，新建的人可以改
   const canStatus = (t.assignee_id ?? t.created_by) === profile?.id
-  const late = t.status !== '已完成' && t.due_at.slice(0, 16) < nowBJ()
+  const late = t.status !== '已完成' && t.due_at.slice(0, 10) < todayBJ()
   const run = async (q: PromiseLike<{ error: { message: string } | null }>) => { const { error } = await q; if (error) onErr(error.message); else onChanged() }
   return (
     <div className={`note task ${taskLevel(t)}`} style={t.status === '已完成' ? { opacity: 0.65 } : undefined}>
       <span className="note-tag">待办 · 优先级{t.priority}{late && ' · 已过期'}</span>
       <span className="note-text" style={{ textDecoration: t.status === '已完成' ? 'line-through' : undefined }}>{t.title}</span>
-      <span className="small" style={{ opacity: 0.8 }}>{show(t.due_at)}（北京）· {t.assignee?.name ?? '未指定'}{mine ? '' : ` · ${t.creator?.name ?? ''}指派`}</span>
+      <span className="small" style={{ opacity: 0.8 }}>{show(t.due_at)} 前 · {t.assignee?.name ?? '未指定'}{mine ? '' : ` · ${t.creator?.name ?? ''}指派`}</span>
       <span className="btn-row" style={{ margin: 0, gap: 6 }}>
         {canStatus
           ? <select value={t.status} onChange={(e) => run(supabase.from('team_tasks').update({ status: e.target.value, done_at: e.target.value === '已完成' ? new Date().toISOString() : null }).eq('id', t.id))}>
@@ -72,7 +72,7 @@ export function AddTask({ people, onAdded, onErr }: { people: Person[]; onAdded:
   const [busy, setBusy] = useState(false)
   useEffect(() => { if (profile && !f.assignee) setF((x) => ({ ...x, assignee: profile.id })) }, [profile?.id]) // eslint-disable-line react-hooks/exhaustive-deps
   const add = async () => {
-    if (!f.due || !f.title.trim()) { onErr('时间和事项都要填。'); return }
+    if (!f.due || !f.title.trim()) { onErr('日期和事项都要填。'); return }
     setBusy(true)
     const { error } = await supabase.from('team_tasks').insert({ due_at: f.due, title: f.title.trim(), assignee_id: f.assignee || null, priority: f.priority })
     setBusy(false)
@@ -82,7 +82,7 @@ export function AddTask({ people, onAdded, onErr }: { people: Person[]; onAdded:
   if (!open) return <button onClick={() => setOpen(true)}>+ 新建待办</button>
   return (
     <div className="btn-row" style={{ margin: '0 0 12px', alignItems: 'center' }}>
-      <input type="datetime-local" value={f.due} onChange={(e) => setF({ ...f, due: e.target.value })} title="北京时间" />
+      <input type="date" value={f.due} onChange={(e) => setF({ ...f, due: e.target.value })} title="日期（北京时间）" />
       <input style={{ flex: 1, minWidth: 180 }} placeholder="要做什么" autoFocus value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && add()} />
       <select value={f.priority} onChange={(e) => setF({ ...f, priority: e.target.value })}>{PRIO.map((x) => <option key={x} value={x}>优先级：{x}</option>)}</select>
       <select value={f.assignee} onChange={(e) => setF({ ...f, assignee: e.target.value })}>
