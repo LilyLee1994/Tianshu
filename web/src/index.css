@@ -108,3 +108,8 @@ td .ghost, td button.ghost { white-space: nowrap; }
 .task-status { font-size: 12px; line-height: 28px; padding: 0 10px; border-radius: 14px; background: rgba(255,255,255,.55); color: #4a5a58; }
 .task-btn { min-height: 28px; padding: 0 10px; font-size: 12px; border-radius: 14px; border: 1px solid rgba(20,48,47,.25); background: transparent; color: #3a4a48; }
 .task-btn:hover { background: rgba(255,255,255,.7); }
+
+/* 没写 class 的按钮，统一用主按钮样式（深绿底白字） */
+:where(button:not([class])) { min-height: 40px; padding: 0 18px; border: 0; border-radius: 8px; background: #0f6b66; color: #fff; font-size: 14px; }
+:where(button:not([class])):hover { background: #0b5a56; }
+:where(button:not([class])):disabled { opacity: .55; cursor: not-allowed; }
