@@ -17,6 +17,7 @@ export default function Onboarding() {
   const [adding, setAdding] = useState(false)
   const [err, setErr] = useState('')
   const [stra, setStra] = useState<Record<number, string>>({})
+  const [guide, setGuide] = useState<Record<number, string>>({})
   const [missing, setMissing] = useState<Record<number, string[]>>({})
   const nav = useNavigate()
 
@@ -24,10 +25,10 @@ export default function Onboarding() {
     const [s, p, d] = await Promise.all([
       supabase.from('onboarding_steps').select('*').order('property_id').order('seq').limit(5000),
       supabase.from('properties').select('id, name, assistant_id, assistant:profiles!assistant_id(name)').order('name').limit(2000),
-      supabase.from('property_details').select('property_id, stra_number').not('stra_number', 'is', null).limit(3000),
+      supabase.from('property_details').select('property_id, stra_number, guidebook_url').limit(3000),
     ])
     if (s.error) setErr(`读取出错：${s.error.message}（是否已运行 039 迁移？）`); else setErr('')
-    setStra(Object.fromEntries(((d.data ?? []) as { property_id: number; stra_number: string }[]).map((x) => [x.property_id, x.stra_number]))); setSteps((s.data ?? []) as Step[]); setProps((p.data ?? []) as never as Prop[])
+    setStra(Object.fromEntries(((d.data ?? []) as { property_id: number; stra_number: string | null }[]).filter((x) => x.stra_number).map((x) => [x.property_id, x.stra_number as string]))); setGuide(Object.fromEntries(((d.data ?? []) as { property_id: number; guidebook_url: string | null }[]).filter((x) => x.guidebook_url).map((x) => [x.property_id, x.guidebook_url as string]))); setSteps((s.data ?? []) as Step[]); setProps((p.data ?? []) as never as Prop[])
     // 房源档案还缺什么（个体表 = 房源详情，Bill = 水电燃气网络和合同到期日）
     const ids = [...new Set(((s.data ?? []) as Step[]).map((x) => x.property_id))]
     if (ids.length) {
@@ -84,7 +85,18 @@ export default function Onboarding() {
     setErr(''); setStra((x) => ({ ...x, [s.property_id]: val }))
     if (val && s.status !== '已完成') patch(s.id, { status: '已完成' })
   }
+  // Guidebook 这一步：同理，填链接同步到房源档案并自动完成
+  const isGuide = (s: Step) => /guidebook/i.test(s.name)
+  const saveGuide = async (s: Step, v: string) => {
+    const val = v.trim()
+    if (val === (guide[s.property_id] ?? '')) return
+    const { error } = await supabase.rpc('set_guidebook_url', { p_property: s.property_id, p_url: val })
+    if (error) { setErr(error.code === '42883' || error.code === 'PGRST202' ? '保存失败：还没运行 042 迁移。' : `Guidebook 保存失败：${error.message}`); return }
+    setErr(''); setGuide((x) => ({ ...x, [s.property_id]: val }))
+    if (val && s.status !== '已完成') patch(s.id, { status: '已完成' })
+  }
   const changeStatus = (s: Step, status: string) => {
+    if (isGuide(s) && status === '已完成' && !guide[s.property_id]) { setErr('完成「Guidebook」要先填 Guidebook 链接。'); return }
     if (isStra(s) && status === '已完成' && !stra[s.property_id]) { setErr('完成「注册 STRA」要先填 STRA 编号。'); return }
     if (isProfile(s) && status === '已完成' && (missing[s.property_id]?.length ?? 1) > 0) { setErr(`房源档案还没填齐：${(missing[s.property_id] ?? []).join('、')}。`); return }
     setErr(''); patch(s.id, { status })
@@ -151,6 +163,7 @@ export default function Onboarding() {
                           {s.done_at && <div className="muted small">{s.done_at.slice(5, 10)}</div>}</td>
                         <td>
                           {isStra(s) && <input key={`stra${stra[s.property_id] ?? ''}`} style={{ marginBottom: 6, fontWeight: 600 }} defaultValue={stra[s.property_id] ?? ''} disabled={!canEdit} placeholder="填 STRA 编号（会同步到房源档案）" onBlur={(e) => saveStra(s, e.target.value)} />}
+                          {isGuide(s) && <input key={`gb${guide[s.property_id] ?? ''}`} style={{ marginBottom: 6, fontWeight: 600 }} defaultValue={guide[s.property_id] ?? ''} disabled={!canEdit} placeholder="填 Guidebook 链接（会同步到房源档案）" onBlur={(e) => saveGuide(s, e.target.value)} />}
                           {isProfile(s) && (
                             <div className="small" style={{ marginBottom: 6 }}>
                               {missing[s.property_id]?.length ? <span style={{ color: '#9a5a00' }}>还缺：{missing[s.property_id].join('、')}</span> : <span style={{ color: '#1f6b34' }}>档案已填齐</span>}
