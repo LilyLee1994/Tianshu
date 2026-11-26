@@ -50,8 +50,8 @@ export default function Onboarding() {
   const saveStra = async (s: Step, v: string) => {
     const val = v.trim()
     if (val === (stra[s.property_id] ?? '')) return
-    const { error } = await supabase.from('property_details').upsert({ property_id: s.property_id, stra_number: val || null }, { onConflict: 'property_id' })
-    if (error) { setErr(error.code === '42703' ? '保存失败：还没运行 040 迁移。' : `STRA 保存失败：${error.message}`); return }
+    const { error } = await supabase.rpc('set_stra_number', { p_property: s.property_id, p_stra: val })
+    if (error) { setErr(error.code === '42703' || error.code === '42883' || error.code === 'PGRST202' ? '保存失败：还没运行 040 迁移。' : `STRA 保存失败：${error.message}`); return }
     setErr(''); setStra((x) => ({ ...x, [s.property_id]: val }))
     if (val && s.status !== '已完成') patch(s.id, { status: '已完成' })
   }
