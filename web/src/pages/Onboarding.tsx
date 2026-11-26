@@ -18,10 +18,12 @@ export default function Onboarding() {
   const [err, setErr] = useState('')
   const [stra, setStra] = useState<Record<number, string>>({})
   const [guide, setGuide] = useState<Record<number, string>>({})
+  const [assistants, setAssistants] = useState<string[]>([])
   const [missing, setMissing] = useState<Record<number, string[]>>({})
   const nav = useNavigate()
 
   const load = useCallback(async () => {
+    supabase.from('profiles').select('name').eq('role', 'assistant').eq('active', true).order('name').then(({ data }) => setAssistants((data ?? []).map((x) => x.name as string)))
     const [s, p, d] = await Promise.all([
       supabase.from('onboarding_steps').select('*').order('property_id').order('seq').limit(5000),
       supabase.from('properties').select('id, name, assistant_id, assistant:profiles!assistant_id(name)').order('name').limit(2000),
@@ -158,7 +160,13 @@ export default function Onboarding() {
                     <tbody>{st.map((s) => (
                       <tr key={s.id}>
                         <td>{s.seq}</td><td>{s.name}</td>
-                        <td><input defaultValue={s.owner ?? ''} disabled={!canEdit} onBlur={(e) => e.target.value !== (s.owner ?? '') && patch(s.id, { owner: e.target.value.trim() || null })} /></td>
+                        <td>{/guidebook|^上线$/i.test(s.name) || ['待分配', '客服', '主责助理'].includes(s.owner ?? '')
+                          ? <select value={s.owner ?? ''} disabled={!canEdit} onChange={(e) => patch(s.id, { owner: e.target.value || null })}>
+                              <option value="">待分配</option>
+                              {s.owner && s.owner !== '待分配' && !assistants.includes(s.owner) && <option>{s.owner}</option>}
+                              {assistants.map((a) => <option key={a}>{a}</option>)}
+                            </select>
+                          : <input defaultValue={s.owner ?? ''} disabled={!canEdit} onBlur={(e) => e.target.value !== (s.owner ?? '') && patch(s.id, { owner: e.target.value.trim() || null })} />}</td>
                         <td><select value={s.status} disabled={!canEdit} style={{ color: stColor(s.status), fontWeight: 600 }} onChange={(e) => changeStatus(s, e.target.value)}>{STATUSES.map((x) => <option key={x}>{x}</option>)}</select>
                           {s.done_at && <div className="muted small">{s.done_at.slice(5, 10)}</div>}</td>
                         <td>
