@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { callApi } from '../lib/api'
 import Copy from '../lib/Copy'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { HistoryModal } from '../lib/History'
 
 interface Details {
@@ -46,7 +46,8 @@ export default function Properties() {
   const [err, setErr] = useState('')
   const [scope, setScope] = useState<'mine' | 'all'>('mine')
   const [q, setQ] = useState('')
-  const [sel, setSel] = useState<number | null>(null)
+  const [qp] = useSearchParams()
+  const [sel, setSel] = useState<number | null>(Number(qp.get('id')) || null)
   const [editing, setEditing] = useState(false)
   const [adding, setAdding] = useState(false)
   const [msg, setMsg] = useState('')

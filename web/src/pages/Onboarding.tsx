@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
+import { useNavigate } from 'react-router-dom'
 
 const STATUSES = ['未完成', '进行中', '已完成']
 interface Step { id: number; property_id: number; seq: number; name: string; owner: string | null; status: string; note: string | null; done_at: string | null }
@@ -16,6 +17,8 @@ export default function Onboarding() {
   const [adding, setAdding] = useState(false)
   const [err, setErr] = useState('')
   const [stra, setStra] = useState<Record<number, string>>({})
+  const [missing, setMissing] = useState<Record<number, string[]>>({})
+  const nav = useNavigate()
 
   const load = useCallback(async () => {
     const [s, p, d] = await Promise.all([
@@ -25,6 +28,27 @@ export default function Onboarding() {
     ])
     if (s.error) setErr(`读取出错：${s.error.message}（是否已运行 039 迁移？）`); else setErr('')
     setStra(Object.fromEntries(((d.data ?? []) as { property_id: number; stra_number: string }[]).map((x) => [x.property_id, x.stra_number]))); setSteps((s.data ?? []) as Step[]); setProps((p.data ?? []) as never as Prop[])
+    // 房源档案还缺什么（个体表 = 房源详情，Bill = 水电燃气网络和合同到期日）
+    const ids = [...new Set(((s.data ?? []) as Step[]).map((x) => x.property_id))]
+    if (ids.length) {
+      const [dd, cc] = await Promise.all([
+        supabase.from('property_details').select('*').in('property_id', ids),
+        supabase.from('property_contracts').select('*').in('property_id', ids),
+      ])
+      const dm = new Map((dd.data ?? []).map((x: Record<string, unknown>) => [x.property_id as number, x]))
+      const cm = new Map((cc.data ?? []).map((x: Record<string, unknown>) => [x.property_id as number, x]))
+      const out: Record<number, string[]> = {}
+      for (const id of ids) {
+        const d = dm.get(id) ?? {}, c = cm.get(id) ?? {}, m: string[] = []
+        const miss = (v: unknown) => v === null || v === undefined || v === ''
+        if (miss(d.bedrooms)) m.push('卧室数'); if (miss(d.bathrooms)) m.push('卫生间数'); if (miss(d.max_guests)) m.push('可住人数'); if (miss(d.beds)) m.push('床')
+        if (miss(d.lock_code)) m.push('锁盒密码'); if (miss(d.wifi_name)) m.push('WiFi 名'); if (miss(d.wifi_password)) m.push('WiFi 密码')
+        for (const [k, l] of [['water', '水'], ['power', '电'], ['gas', '燃气'], ['internet', '网络']] as const) if (miss(c[k]) || c[k] === '未填') m.push(`${l}谁交费`)
+        if (miss(c.end_date)) m.push('合同到期日')
+        out[id] = m
+      }
+      setMissing(out)
+    }
   }, [])
   useEffect(() => { load() }, [load])
 
@@ -45,6 +69,11 @@ export default function Onboarding() {
     const { error } = await supabase.from('onboarding_steps').update(body).eq('id', id)
     if (error) { setErr(error.message); load() }
   }
+  // 「完善房源档案」这一步：档案填齐了自动标完成，没填齐不能手动标完成
+  const isProfile = (s: Step) => /房源档案|个体表/.test(s.name)
+  useEffect(() => {
+    for (const s of steps) if (isProfile(s) && s.status !== '已完成' && missing[s.property_id] && missing[s.property_id].length === 0) patch(s.id, { status: '已完成' })
+  }, [steps, missing]) // eslint-disable-line react-hooks/exhaustive-deps
   // 注册 STRA 这一步：填了编号就同步到房源档案，并自动标为已完成；没编号不能标完成
   const isStra = (s: Step) => /stra/i.test(s.name)
   const saveStra = async (s: Step, v: string) => {
@@ -57,6 +86,7 @@ export default function Onboarding() {
   }
   const changeStatus = (s: Step, status: string) => {
     if (isStra(s) && status === '已完成' && !stra[s.property_id]) { setErr('完成「注册 STRA」要先填 STRA 编号。'); return }
+    if (isProfile(s) && status === '已完成' && (missing[s.property_id]?.length ?? 1) > 0) { setErr(`房源档案还没填齐：${(missing[s.property_id] ?? []).join('、')}。`); return }
     setErr(''); patch(s.id, { status })
   }
   const start = async (pid: number) => {
@@ -120,6 +150,12 @@ export default function Onboarding() {
                           {s.done_at && <div className="muted small">{s.done_at.slice(5, 10)}</div>}</td>
                         <td>
                           {isStra(s) && <input key={`stra${stra[s.property_id] ?? ''}`} style={{ marginBottom: 6, fontWeight: 600 }} defaultValue={stra[s.property_id] ?? ''} disabled={!canEdit} placeholder="填 STRA 编号（会同步到房源档案）" onBlur={(e) => saveStra(s, e.target.value)} />}
+                          {isProfile(s) && (
+                            <div className="small" style={{ marginBottom: 6 }}>
+                              {missing[s.property_id]?.length ? <span style={{ color: '#9a5a00' }}>还缺：{missing[s.property_id].join('、')}</span> : <span style={{ color: '#1f6b34' }}>档案已填齐</span>}
+                              {' '}<button className="task-btn" onClick={() => nav(`/properties?id=${s.property_id}`)}>去房源档案填写</button>
+                            </div>
+                          )}
                           <input defaultValue={s.note ?? ''} disabled={!canEdit} placeholder="备注" onBlur={(e) => e.target.value !== (s.note ?? '') && patch(s.id, { note: e.target.value.trim() || null })} /></td>
                         <td><button className="task-btn" onClick={() => delStep(s)}>删除</button></td>
                       </tr>
