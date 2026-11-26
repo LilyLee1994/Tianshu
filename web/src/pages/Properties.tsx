@@ -140,7 +140,7 @@ export default function Properties() {
           </div>
           {cur && (editing
             ? <EditForm key={cur.id} row={cur} isAdmin={isAdmin} assistants={assistants} onCancel={() => setEditing(false)} onSaved={() => afterSave('已保存。')} />
-            : <Detail row={cur} canEdit={canEdit} isAdmin={isAdmin} onEdit={() => { setEditing(true); setMsg('') }} />)}
+            : <Detail row={cur} canEdit={canEdit} isAdmin={isAdmin} onEdit={() => { setEditing(true); setMsg('') }} onChanged={load} />)}
         </div>
       )}
 
@@ -151,7 +151,8 @@ export default function Properties() {
 
 interface PlatformAccount { id: number; login: string; needs_verification: boolean; note: string | null; password: string | null; google_password: string | null }
 
-function AccountBlock({ a, old }: { a: PlatformAccount; old: string[] }) {
+function AccountBlock({ a, old, propertyId, canEdit, onChanged }: { a: PlatformAccount | null; old: string[]; propertyId: number; canEdit: boolean; onChanged: () => void }) {
+  const [editing, setEditing] = useState(false)
   // 老账号的密码：按邮箱去已录入的账号里查
   const [found, setFound] = useState<Record<string, { password: string | null; google_password: string | null }>>({})
   const key = old.join(',')
@@ -163,11 +164,17 @@ function AccountBlock({ a, old }: { a: PlatformAccount; old: string[] }) {
   }, [key]) // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div className="plat" style={{ display: 'block', marginTop: 12 }}>
-      <b>平台账号（Airbnb）</b>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <b>平台账号（Airbnb）</b>
+        {canEdit && <button className="ghost" onClick={() => setEditing(true)}>编辑账号</button>}
+      </div>
+      {editing && <AccountEditModal a={a} old={old} found={found} propertyId={propertyId} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); onChanged() }} />}
       <dl style={{ marginTop: 8 }}>
-        <dt>登录邮箱</dt><dd>{a.login}<Copy text={a.login} /></dd>
-        <dt>Airbnb 密码</dt><dd>{a.password ? <>{a.password}<Copy text={a.password} /></> : '—'}</dd>
-        <dt>Google 密码</dt><dd>{a.google_password ? <>{a.google_password}<Copy text={a.google_password} /></> : '—'}</dd>
+        {a ? <>
+          <dt>登录邮箱</dt><dd>{a.login}<Copy text={a.login} /></dd>
+          <dt>Airbnb 密码</dt><dd>{a.password ? <>{a.password}<Copy text={a.password} /></> : '—'}</dd>
+          <dt>Google 密码</dt><dd>{a.google_password ? <>{a.google_password}<Copy text={a.google_password} /></> : '—'}</dd>
+        </> : <><dt>登录邮箱</dt><dd className="muted">还没有绑定账号</dd></>}
         {old.map((email) => {
           const f = found[email.toLowerCase()]
           return (
@@ -187,7 +194,98 @@ function AccountBlock({ a, old }: { a: PlatformAccount; old: string[] }) {
   )
 }
 
-function Detail({ row: r, canEdit, isAdmin, onEdit }: { row: Row; canEdit: boolean; isAdmin: boolean; onEdit: () => void }) {
+// 编辑平台账号：改当前账号的邮箱/密码；房子重新上线换了新账号时，旧账号自动变成“老账号”；老账号也能增删改
+function AccountEditModal({ a, old, found, propertyId, onClose, onSaved }: {
+  a: PlatformAccount | null; old: string[]; found: Record<string, { password: string | null; google_password: string | null }>
+  propertyId: number; onClose: () => void; onSaved: () => void
+}) {
+  const [replace, setReplace] = useState(!a)
+  const [cur, setCur] = useState({ login: a?.login ?? '', password: a?.password ?? '', google: a?.google_password ?? '' })
+  const [olds, setOlds] = useState(old.map((e) => ({ email: e, password: found[e.toLowerCase()]?.password ?? '', google: found[e.toLowerCase()]?.google_password ?? '' })))
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const esc = (x: string) => x.replace(/[\\%_]/g, '\\$&')
+  const findAcc = async (login: string) => (await supabase.from('platform_accounts').select('id').eq('platform', 'Airbnb').ilike('login', esc(login)).maybeSingle()).data
+
+  const startReplace = () => { setReplace(true); setCur({ login: '', password: '', google: '' }) }
+  const cancelReplace = () => { setReplace(false); setCur({ login: a?.login ?? '', password: a?.password ?? '', google: a?.google_password ?? '' }) }
+
+  const save = async () => {
+    const login = cur.login.trim()
+    if (!login) { setErr('登录邮箱要填。'); return }
+    if (olds.some((o) => !o.email.trim())) { setErr('老账号的邮箱不能空，不要的请点删除。'); return }
+    setBusy(true); setErr('')
+    try {
+      const fail = (m: string): never => { throw new Error(m) }
+      const vals = { password: cur.password.trim() || null, google_password: cur.google.trim() || null }
+      let list = olds.map((o) => ({ ...o, email: o.email.trim() }))
+      if (replace) {
+        // 换新账号：已有就复用，没有就新建；原账号记成老账号
+        const ex = await findAcc(login)
+        let id = ex?.id
+        if (ex) { const r = await supabase.from('platform_accounts').update(vals).eq('id', ex.id); if (r.error) fail(r.error.message) }
+        else {
+          const r = await supabase.from('platform_accounts').insert({ platform: 'Airbnb', login, ...vals }).select('id').single()
+          if (r.error) fail(r.error.message); id = r.data.id
+        }
+        const r2 = await supabase.from('properties').update({ airbnb_account_id: id }).eq('id', propertyId)
+        if (r2.error) fail(r2.error.message)
+        if (a && a.login.toLowerCase() !== login.toLowerCase() && !list.some((o) => o.email.toLowerCase() === a.login.toLowerCase()))
+          list = [{ email: a.login, password: a.password ?? '', google: a.google_password ?? '' }, ...list]
+      } else if (a) {
+        const r = await supabase.from('platform_accounts').update({ login, ...vals }).eq('id', a.id)
+        if (r.error) fail(r.error.code === '23505' ? '这个邮箱已经有账号了，要换成它请用“换新账号”。' : r.error.message)
+      }
+      list = list.filter((o) => o.email.toLowerCase() !== login.toLowerCase())
+      // 老账号的密码：存在账号库里，已有的更新，没有且填了的新建（标记已下线）
+      for (const o of list) {
+        const v = { password: o.password.trim() || null, google_password: o.google.trim() || null }
+        const ex = await findAcc(o.email)
+        if (ex) { const r = await supabase.from('platform_accounts').update(v).eq('id', ex.id); if (r.error) fail(r.error.message) }
+        else if (v.password || v.google_password) { const r = await supabase.from('platform_accounts').insert({ platform: 'Airbnb', login: o.email, status: '已下线', ...v }); if (r.error) fail(r.error.message) }
+      }
+      const r3 = await supabase.from('property_account_info').upsert({ property_id: propertyId, old_accounts: list.map((o) => o.email) }, { onConflict: 'property_id' })
+      if (r3.error) fail(r3.error.message)
+      onSaved()
+    } catch (e) { setErr(`保存失败：${(e as Error).message}`) }
+    setBusy(false)
+  }
+  const upd = (i: number, k: 'email' | 'password' | 'google', v: string) => setOlds(olds.map((o, j) => j === i ? { ...o, [k]: v } : o))
+  return (
+    <div className="modal-bg" onClick={onClose}>
+      <div className="modal" style={{ width: 560 }} onClick={(e) => e.stopPropagation()}>
+        <h2>编辑账号</h2>
+        <h3 style={{ margin: 0 }}>{replace && a ? '新账号' : '当前账号'}</h3>
+        {replace && a && <p className="muted small" style={{ margin: 0 }}>保存后，原来的 {a.login} 会自动变成这套房的老账号。</p>}
+        <label>登录邮箱<input value={cur.login} onChange={(e) => setCur({ ...cur, login: e.target.value })} /></label>
+        <div className="form-grid">
+          <label>Airbnb 密码<input value={cur.password} onChange={(e) => setCur({ ...cur, password: e.target.value })} /></label>
+          <label>Google 密码<input value={cur.google} onChange={(e) => setCur({ ...cur, google: e.target.value })} /></label>
+        </div>
+        {a && !replace && <div><button className="ghost" onClick={startReplace}>这套房换新账号了</button></div>}
+        {a && replace && <div><button className="ghost" onClick={cancelReplace}>不换了，只改当前账号</button></div>}
+        <h3 style={{ margin: '8px 0 0' }}>老账号</h3>
+        {!olds.length && <p className="muted small" style={{ margin: 0 }}>没有老账号。</p>}
+        {olds.map((o, i) => (
+          <div key={i} style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr 1fr auto', gap: 8 }}>
+            <input placeholder="邮箱" value={o.email} onChange={(e) => upd(i, 'email', e.target.value)} />
+            <input placeholder="密码" value={o.password} onChange={(e) => upd(i, 'password', e.target.value)} />
+            <input placeholder="Google 密码" value={o.google} onChange={(e) => upd(i, 'google', e.target.value)} />
+            <button className="ghost" onClick={() => setOlds(olds.filter((_, j) => j !== i))}>删除</button>
+          </div>
+        ))}
+        <div><button className="ghost" onClick={() => setOlds([...olds, { email: '', password: '', google: '' }])}>+ 加老账号</button></div>
+        {err && <div className="err">{err}</div>}
+        <div className="btn-row">
+          <button className="primary small-btn" disabled={busy} onClick={save}>{busy ? '保存中…' : '保存'}</button>
+          <button className="ghost" onClick={onClose}>取消</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function Detail({ row: r, canEdit, isAdmin, onEdit, onChanged }: { row: Row; canEdit: boolean; isAdmin: boolean; onEdit: () => void; onChanged: () => void }) {
   const [hist, setHist] = useState(false)
   const nav = useNavigate()
   const [rt, setRt] = useState<Record<string, { n: number; avg: number }>>({})
@@ -229,7 +327,7 @@ function Detail({ row: r, canEdit, isAdmin, onEdit }: { row: Row; canEdit: boole
         <div className="plat"><b>Airbnb</b>{r.airbnb_url ? <a href={r.airbnb_url.startsWith('http') ? r.airbnb_url : `https://${r.airbnb_url}`} target="_blank" rel="noreferrer">打开房源页</a> : <span className="muted">还没填链接</span>}<span className="muted small">{ratingText('Airbnb', true)}</span></div>
         <div className="plat"><b>Booking</b>{r.booking_url ? <a href={r.booking_url.startsWith('http') ? r.booking_url : `https://${r.booking_url}`} target="_blank" rel="noreferrer">打开房源页</a> : <span className="muted">还没填链接</span>}<span className="muted small">{ratingText('Booking.com', false)}</span></div>
       </div>
-      {r.airbnb_account && <AccountBlock a={r.airbnb_account} old={r.account_info?.old_accounts ?? []} />}
+      {(r.airbnb_account || isAdmin) && <AccountBlock a={r.airbnb_account} old={r.account_info?.old_accounts ?? []} propertyId={r.id} canEdit={isAdmin} onChanged={onChanged} />}
       {hist && <HistoryModal title={r.name} filters={[{ table: 'properties', id: r.id }, { table: 'property_details', id: r.id }, { table: 'property_contracts', id: r.id }, { table: 'property_account_info', id: r.id }]} onClose={() => setHist(false)} />}
       {st === '待登记合同' && <p className="warn">水电燃气网络和合同到期日填完整后，房源才算“运营中”。</p>}
     </section>
