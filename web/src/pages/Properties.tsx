@@ -214,9 +214,10 @@ function MoneyLog({ propertyId }: { propertyId: number }) {
       supabase.from('claims').select('content, status, paid_amount, paid_date, platform').eq('property_id', propertyId).eq('status', '已赔付'),
       supabase.from('review_actions').select('status, comp_amount, payer, handled_date, updated_at, note, review:reviews!inner(property_id, rating)').eq('review.property_id', propertyId).eq('status', '赔偿客人'),
       supabase.from('work_orders').select('type, description, amount, payer, status, done_date, planned_date, created_at').eq('property_id', propertyId).not('amount', 'is', null).neq('status', '已取消'),
-    ]).then(([c, ra, w]) => {
+      supabase.from('ledger').select('occurred_date, kind, category, amount, payer, guest_name, reason').eq('property_id', propertyId),
+    ]).then(([c, ra, w, lg]) => {
       if (off) return
-      const e = c.error ?? ra.error ?? w.error
+      const e = c.error ?? ra.error ?? w.error ?? lg.error
       if (e) { setErr(`金额记录读取失败：${e.message}`); return }
       const out: MoneyRow[] = []
       for (const x of c.data ?? []) if (Number(x.paid_amount) > 0) out.push({ date: x.paid_date ?? '', item: '索赔到账', text: x.content, amt: Number(x.paid_amount), payer: null })
@@ -226,6 +227,7 @@ function MoneyLog({ propertyId }: { propertyId: number }) {
         out.push({ date: x.handled_date ?? x.updated_at.slice(0, 10), item: '差评赔偿', text: `${rv?.rating != null ? `${rv.rating} 分差评` : '差评'}${x.note ? `：${x.note}` : ''}`, amt: -Number(x.comp_amount), payer: x.payer })
       }
       for (const x of w.data ?? []) if (Number(x.amount) > 0) out.push({ date: x.done_date ?? x.planned_date ?? x.created_at.slice(0, 10), item: `工单·${x.type}`, text: `${x.description ?? ''}${x.status === '已完成' ? '' : `（${x.status}）`}`, amt: -Number(x.amount), payer: x.payer === '待定' ? null : x.payer })
+      for (const x of lg.data ?? []) out.push({ date: x.occurred_date, item: `款项·${x.category}`, text: `${x.kind}${x.guest_name ? ` · ${x.guest_name}` : ''}${x.reason ? `：${x.reason}` : ''}`, amt: Number(x.amount), payer: x.payer })
       out.sort((a, b) => b.date.localeCompare(a.date))
       setRows(out)
     })

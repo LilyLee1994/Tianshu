@@ -18,9 +18,10 @@ import ImportAccounts from './pages/ImportAccounts'
 import Vault from './pages/Vault'
 import DataCheck from './pages/DataCheck'
 import WorkerApp from './pages/WorkerApp'
+import CompanyFunds from './pages/CompanyFunds'
 
 const PAGES: Record<string, React.ReactElement> = {
-  '/': <Dashboard />, '/properties': <Properties />, '/orders': <Orders />, '/fees': <Fees />, '/contracts': <Contracts />, '/accounts': <Accounts />, '/data': <DataCheck />, '/reviews': <Reviews />, '/claims': <Claims />, '/alerts': <Alerts />, '/shifts': <Shifts />, '/import': <ImportAccounts />, '/vault': <Vault />, '/statements': <Statements />,
+  '/': <Dashboard />, '/properties': <Properties />, '/orders': <Orders />, '/fees': <Fees />, '/contracts': <Contracts />, '/accounts': <Accounts />, '/data': <DataCheck />, '/reviews': <Reviews />, '/claims': <Claims />, '/alerts': <Alerts />, '/shifts': <Shifts />, '/import': <ImportAccounts />, '/vault': <Vault />, '/statements': <Statements />, '/company': <CompanyFunds />,
 }
 
 function Gate() {
