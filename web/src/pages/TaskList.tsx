@@ -42,6 +42,8 @@ export function useTasks() {
 export function TaskNote({ t, onChanged, onErr }: { t: Task; onChanged: () => void; onErr: (m: string) => void }) {
   const { profile } = useAuth()
   const mine = t.created_by === profile?.id
+  // 状态只有被指派的人能改；没指定负责人的，新建的人可以改
+  const canStatus = (t.assignee_id ?? t.created_by) === profile?.id
   const late = t.status !== '已完成' && t.due_at.slice(0, 16) < nowBJ()
   const run = async (q: PromiseLike<{ error: { message: string } | null }>) => { const { error } = await q; if (error) onErr(error.message); else onChanged() }
   return (
@@ -50,9 +52,11 @@ export function TaskNote({ t, onChanged, onErr }: { t: Task; onChanged: () => vo
       <span className="note-text" style={{ textDecoration: t.status === '已完成' ? 'line-through' : undefined }}>{t.title}</span>
       <span className="small" style={{ opacity: 0.8 }}>{show(t.due_at)}（北京）· {t.assignee?.name ?? '未指定'}{mine ? '' : ` · ${t.creator?.name ?? ''}指派`}</span>
       <span className="btn-row" style={{ margin: 0, gap: 6 }}>
-        <select value={t.status} onChange={(e) => run(supabase.from('team_tasks').update({ status: e.target.value, done_at: e.target.value === '已完成' ? new Date().toISOString() : null }).eq('id', t.id))}>
-          {STATUS.map((s) => <option key={s}>{s}</option>)}
-        </select>
+        {canStatus
+          ? <select value={t.status} onChange={(e) => run(supabase.from('team_tasks').update({ status: e.target.value, done_at: e.target.value === '已完成' ? new Date().toISOString() : null }).eq('id', t.id))}>
+              {STATUS.map((s) => <option key={s}>{s}</option>)}
+            </select>
+          : <span className="chip gray" style={{ marginLeft: 0 }}>{t.status}</span>}
         {mine && t.status === '已完成' && <button onClick={() => run(supabase.from('team_tasks').update({ closed_at: new Date().toISOString() }).eq('id', t.id))}>关闭</button>}
         {mine && t.status !== '已完成' && <button className="ghost" onClick={() => window.confirm(`删除「${t.title}」？`) && run(supabase.from('team_tasks').delete().eq('id', t.id))}>删除</button>}
       </span>
