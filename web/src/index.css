@@ -101,3 +101,10 @@ td .ghost, td button.ghost { white-space: nowrap; }
 
 .note.task { cursor: default; }
 .note.task:hover { transform: none; box-shadow: 0 2px 4px rgba(20,48,47,.12); }
+
+/* 待办便签里的小控件：紧凑、半透明，和便签融为一体 */
+.task-actions { display: flex; align-items: center; gap: 6px; margin-top: auto; padding-top: 6px; }
+.task-actions select { min-height: 28px; padding: 0 22px 0 8px; font-size: 12px; border-radius: 14px; border-color: rgba(20,48,47,.25); background-color: rgba(255,255,255,.65); }
+.task-status { font-size: 12px; line-height: 28px; padding: 0 10px; border-radius: 14px; background: rgba(255,255,255,.55); color: #4a5a58; }
+.task-btn { min-height: 28px; padding: 0 10px; font-size: 12px; border-radius: 14px; border: 1px solid rgba(20,48,47,.25); background: transparent; color: #3a4a48; }
+.task-btn:hover { background: rgba(255,255,255,.7); }

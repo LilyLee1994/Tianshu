@@ -51,14 +51,14 @@ export function TaskNote({ t, onChanged, onErr }: { t: Task; onChanged: () => vo
       <span className="note-tag">待办 · 优先级{t.priority}{late && ' · 已过期'}</span>
       <span className="note-text" style={{ textDecoration: t.status === '已完成' ? 'line-through' : undefined }}>{t.title}</span>
       <span className="small" style={{ opacity: 0.8 }}>{show(t.due_at)} 前 · {t.assignee?.name ?? '未指定'}{mine ? '' : ` · ${t.creator?.name ?? ''}指派`}</span>
-      <span className="btn-row" style={{ margin: 0, gap: 6 }}>
+      <span className="task-actions">
         {canStatus
           ? <select value={t.status} onChange={(e) => run(supabase.from('team_tasks').update({ status: e.target.value, done_at: e.target.value === '已完成' ? new Date().toISOString() : null }).eq('id', t.id))}>
               {STATUS.map((s) => <option key={s}>{s}</option>)}
             </select>
-          : <span className="chip gray" style={{ marginLeft: 0 }}>{t.status}</span>}
-        {mine && t.status === '已完成' && <button onClick={() => run(supabase.from('team_tasks').update({ closed_at: new Date().toISOString() }).eq('id', t.id))}>关闭</button>}
-        {mine && t.status !== '已完成' && <button className="ghost" onClick={() => window.confirm(`删除「${t.title}」？`) && run(supabase.from('team_tasks').delete().eq('id', t.id))}>删除</button>}
+          : <span className="task-status">{t.status}</span>}
+        {mine && t.status === '已完成' && <button className="task-btn" onClick={() => run(supabase.from('team_tasks').update({ closed_at: new Date().toISOString() }).eq('id', t.id))}>关闭</button>}
+        {mine && t.status !== '已完成' && <button className="task-btn" onClick={() => window.confirm(`删除「${t.title}」？`) && run(supabase.from('team_tasks').delete().eq('id', t.id))}>删除</button>}
       </span>
     </div>
   )
@@ -72,6 +72,7 @@ export function AddTask({ people, onAdded, onErr }: { people: Person[]; onAdded:
   const [busy, setBusy] = useState(false)
   useEffect(() => { if (profile && !f.assignee) setF((x) => ({ ...x, assignee: profile.id })) }, [profile?.id]) // eslint-disable-line react-hooks/exhaustive-deps
   const add = async () => {
+    if (busy) return
     if (!f.due || !f.title.trim()) { onErr('日期和事项都要填。'); return }
     setBusy(true)
     const { error } = await supabase.from('team_tasks').insert({ due_at: f.due, title: f.title.trim(), assignee_id: f.assignee || null, priority: f.priority })
