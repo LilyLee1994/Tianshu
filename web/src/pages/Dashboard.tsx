@@ -9,6 +9,7 @@ import { daysTo } from './Contracts'
 import { badOne } from './Reviews'
 import { openMonth, OPEN_DAY } from './Shifts'
 import { coveredAssistantIds } from '../lib/cover'
+import TaskList from './TaskList'
 
 type Lv = 'red' | 'orange' | 'yellow' | 'blue'
 interface Todo { tag: string; text: string; to: string; cls: string; lv: Lv }
@@ -108,6 +109,7 @@ export default function Dashboard() {
         ))}
         {!todos.length && <p className="muted">暂时没有待办。</p>}
       </div>
+      <TaskList />
     </div>
   )
 }
