@@ -72,7 +72,16 @@ export default function Properties() {
   const list = useMemo(() => {
     const base = isAssistant && scope === 'mine' ? rows.filter((r) => r.assistant_id === profile?.id) : rows
     const k = norm(q)
-    return k ? base.filter((r) => norm(r.name).includes(k) || norm(r.address ?? '').includes(k)) : base
+    if (!k) return base
+    // 由严到宽，前一档有结果就不再往下找：名字开头 → 名字里某个词的开头 → 名字中间包含 → 地址包含
+    const tiers: ((r: Row) => boolean)[] = [
+      (r) => norm(r.name).startsWith(k),
+      (r) => r.name.toLowerCase().split(/[\s\-_/,.()（）]+/).some((w) => w.startsWith(k)),
+      (r) => norm(r.name).includes(k),
+      (r) => norm(r.address ?? '').includes(k),
+    ]
+    for (const t of tiers) { const hit = base.filter(t); if (hit.length) return hit }
+    return []
   }, [rows, q, scope, isAssistant, profile])
   const cur = list.find((r) => r.id === sel) ?? list[0]
   const canEdit = !!cur && (isAdmin || (isAssistant && cur.assistant_id === profile?.id))
