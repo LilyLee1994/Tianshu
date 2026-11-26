@@ -31,4 +31,10 @@ create policy ledger_read on public.ledger for select to authenticated using (pu
 create policy ledger_insert on public.ledger for insert to authenticated with check (public.is_staff());
 create policy ledger_update on public.ledger for update to authenticated using (public.is_staff()) with check (public.is_staff());
 create policy ledger_delete on public.ledger for delete to authenticated using (public.is_admin());
-create trigger trg_log_ledger after insert or update or delete on public.ledger for each row execute function public.log_edit();
+-- 修改记录（025 迁移里的功能）：如果 025 已经运行过就挂上；没运行过就先跳过，之后运行 025 再重新运行本文件即可
+do $$ begin
+  if exists (select 1 from pg_proc where proname = 'log_edit' and pronamespace = 'public'::regnamespace) then
+    drop trigger if exists trg_log_ledger on public.ledger;
+    create trigger trg_log_ledger after insert or update or delete on public.ledger for each row execute function public.log_edit();
+  end if;
+end $$;
