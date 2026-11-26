@@ -24,13 +24,14 @@ export default function Onboarding() {
 
   const load = useCallback(async () => {
     supabase.from('profiles').select('name').eq('role', 'assistant').eq('active', true).order('name').then(({ data }) => setAssistants((data ?? []).map((x) => x.name as string)))
-    const [s, p, d] = await Promise.all([
+    const [s, p, d, d2] = await Promise.all([
       supabase.from('onboarding_steps').select('*').order('property_id').order('seq').limit(5000),
       supabase.from('properties').select('id, name, assistant_id, assistant:profiles!assistant_id(name)').order('name').limit(2000),
-      supabase.from('property_details').select('property_id, stra_number, guidebook_url').limit(3000),
+      supabase.from('property_details').select('property_id, guidebook_url').limit(3000),
+      supabase.from('property_details').select('property_id, stra_number').limit(3000),
     ])
     if (s.error) setErr(`读取出错：${s.error.message}（是否已运行 039 迁移？）`); else setErr('')
-    setStra(Object.fromEntries(((d.data ?? []) as { property_id: number; stra_number: string | null }[]).filter((x) => x.stra_number).map((x) => [x.property_id, x.stra_number as string]))); setGuide(Object.fromEntries(((d.data ?? []) as { property_id: number; guidebook_url: string | null }[]).filter((x) => x.guidebook_url).map((x) => [x.property_id, x.guidebook_url as string]))); setSteps((s.data ?? []) as Step[]); setProps((p.data ?? []) as never as Prop[])
+    setStra(Object.fromEntries(((d2.data ?? []) as { property_id: number; stra_number: string | null }[]).filter((x) => x.stra_number).map((x) => [x.property_id, x.stra_number as string]))); setGuide(Object.fromEntries(((d.data ?? []) as { property_id: number; guidebook_url: string | null }[]).filter((x) => x.guidebook_url).map((x) => [x.property_id, x.guidebook_url as string]))); setSteps((s.data ?? []) as Step[]); setProps((p.data ?? []) as never as Prop[])
     // 房源档案还缺什么（个体表 = 房源详情，Bill = 水电燃气网络和合同到期日）
     const ids = [...new Set(((s.data ?? []) as Step[]).map((x) => x.property_id))]
     if (ids.length) {
