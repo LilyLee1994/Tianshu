@@ -122,3 +122,9 @@ td .ghost, td button.ghost { white-space: nowrap; }
 .old-acc-top { display: flex; gap: 8px; align-items: center; }
 .old-acc-top .task-btn { flex-shrink: 0; white-space: nowrap; min-height: 32px; padding: 0 14px; }
 .old-acc-pw { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+.money-wrap { margin-top: 8px; max-height: 300px; overflow: auto; border: 1px solid #e1e5ea; border-radius: 8px; background: #fff; }
+.money-tbl { min-width: 0; width: 100%; font-size: 13px; }
+.money-tbl th, .money-tbl td { padding: 7px 12px; }
+.money-tbl thead th { position: sticky; top: 0; background: #f4f6f8; }
+.money-tbl tr:last-child td { border-bottom: 0; }
