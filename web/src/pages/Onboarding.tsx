@@ -104,7 +104,7 @@ export default function Onboarding() {
   const start = async (pid: number) => {
     const { data: tpl, error } = await supabase.from('onboarding_template').select('seq, name, owner').order('seq')
     if (error || !tpl?.length) { setErr(error?.message ?? '上线步骤模板是空的。'); return }
-    const { error: e2 } = await supabase.from('onboarding_steps').insert(tpl.map((t) => ({ property_id: pid, seq: t.seq, name: t.name, owner: t.owner })))
+    const { error: e2 } = await supabase.from('onboarding_steps').insert(tpl.map((t) => ({ property_id: pid, seq: t.seq, name: t.name, owner: t.owner === '主责助理' ? (props.find((x) => x.id === pid)?.assistant?.name ?? '待分配') : t.owner })))
     if (e2) { setErr(e2.message); return }
     setAdding(false); setShow('doing'); setOpen(pid); load()
   }

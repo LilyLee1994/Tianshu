@@ -493,7 +493,7 @@ function AddModal({ assistants, onClose, onSaved }: { assistants: Assistant[]; o
     let note = ''
     if (startOb) {
       const { data: tpl, error: e1 } = await supabase.from('onboarding_template').select('seq, name, owner').order('seq')
-      const e2 = e1 || !tpl?.length ? e1 : (await supabase.from('onboarding_steps').insert(tpl.map((t) => ({ property_id: data.id, seq: t.seq, name: t.name, owner: t.owner })))).error
+      const e2 = e1 || !tpl?.length ? e1 : (await supabase.from('onboarding_steps').insert(tpl.map((t) => ({ property_id: data.id, seq: t.seq, name: t.name, owner: t.owner === '主责助理' ? (assistants.find((a) => a.id === f.assistant_id)?.name ?? '待分配') : t.owner })))).error
       note = e1 || e2 || !tpl?.length ? `（上线流程没生成：${(e1 ?? e2)?.message ?? '模板是空的'}，可以到“新房源上线”页再开始。）` : '已开始上线流程，在“新房源上线”里跟进。'
     }
     setBusy(false)
