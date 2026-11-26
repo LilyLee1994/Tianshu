@@ -1,5 +1,5 @@
 import { adminClient, authenticate, sydneyToday, type Req, type Res } from './_lib.js'
-import { hostawayGet, hostawayToken } from './_hostaway.js'
+import { hostawayAll, hostawayGet, hostawayToken } from './_hostaway.js'
 
 // Hostaway 每日同步。一次调用最多跑约 45 秒，做不完就把进度存进数据库，下次调用接着做：
 //   阶段：订单 → 自动派清洁 → 评价 → 日历快照（每个房源未来 180 天，逐个房源）
@@ -13,8 +13,33 @@ const active = (st: string | null) => !/cancel|inquiry|declin|expire|denied/i.te
 const channelOf = (cid: number, name?: unknown) =>
   cid === 2018 ? 'Airbnb' : cid === 2005 ? 'Booking.com' : name ? String(name) : cid ? `渠道${cid}` : null
 
-type Phase = 'reservations' | 'cleaning' | 'reviews' | 'calendar' | 'done'
+type Phase = 'listings' | 'reservations' | 'cleaning' | 'reviews' | 'calendar' | 'done'
 interface State { phase: Phase; calOffset: number; resOffset?: number; revOffset?: number; lastFirst?: Record<string, number>; counts: Record<string, unknown>; failed: string[] }
+
+// 自动关联：Hostaway 房源（按 ID 已关联的跳过）→ 按名字对系统里还没关联的房源，对上就填 hostaway_id，
+// 并把之前没对上房源的订单、评价补上房源。不会新建房源，避免名字不一致时多出重复的房源。
+async function linkListings(db: ReturnType<typeof adminClient>, t: string) {
+  const listings = await hostawayAll(t, '/listings', 10)
+  const { data: props } = await db.from('properties').select('id, name, hostaway_id')
+  const known = new Set((props ?? []).filter((p) => p.hostaway_id).map((p) => Number(p.hostaway_id)))
+  const byName = new Map((props ?? []).filter((p) => !p.hostaway_id).map((p) => [String(p.name).trim().toLowerCase(), p.id as number]))
+  let linked = 0
+  const unmatched: string[] = []
+  for (const l of listings) {
+    const hid = Number(l.id)
+    if (!hid || known.has(hid)) continue
+    const names = [l.internalListingName, l.name, l.externalListingName].map((x) => String(x ?? '').trim().toLowerCase()).filter(Boolean)
+    const pid = names.map((n) => byName.get(n)).find((x) => x !== undefined)
+    if (pid === undefined) { unmatched.push(String(l.internalListingName ?? l.name ?? hid)); continue }
+    const { error } = await db.from('properties').update({ hostaway_id: hid, hostaway_synced_at: new Date().toISOString() }).eq('id', pid)
+    if (error) { unmatched.push(`${l.internalListingName ?? hid}（${error.message}）`); continue }
+    byName.forEach((v, k) => { if (v === pid) byName.delete(k) })
+    await db.from('reservations').update({ property_id: pid }).eq('listing_id', hid).is('property_id', null)
+    await db.from('reviews').update({ property_id: pid }).eq('listing_id', hid).is('property_id', null)
+    linked++
+  }
+  return { listingsLinked: linked, unmatchedListings: unmatched.slice(0, 40), unmatchedCount: unmatched.length }
+}
 
 export default async function handler(req: Req, res: Res) {
   const db = adminClient()
@@ -35,7 +60,7 @@ export default async function handler(req: Req, res: Res) {
   // 找到今天的同步记录，没有就新建
   let { data: run } = await db.from('sync_runs').select('id, ok, summary').eq('kind', kind).maybeSingle()
   if (!run) {
-    const init: State = { phase: 'reservations', calOffset: 0, counts: {}, failed: [] }
+    const init: State = { phase: 'listings', calOffset: 0, counts: {}, failed: [] }
     const ins = await db.from('sync_runs').insert({ kind, summary: init }).select('id, ok, summary').single()
     run = ins.data
   }
@@ -56,6 +81,11 @@ export default async function handler(req: Req, res: Res) {
 
   try {
     const t = await hostawayToken()
+    // 第一步：把 Hostaway 里的房源和系统里的房源自动对上（按名字对，不新建；对不上的记下来，总览提醒管理员）
+    if (st.phase === 'listings') {
+      Object.assign(st.counts, await linkListings(db, t))
+      st.phase = 'reservations'; await save()
+    }
     const { data: props } = await db.from('properties').select('id, hostaway_id, cleaning_by').not('hostaway_id', 'is', null).order('id')
     const byHost = new Map((props ?? []).map((p) => [Number(p.hostaway_id), p.id as number]))
 

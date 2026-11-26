@@ -148,6 +148,12 @@ export default function Dashboard() {
           )),
           ...tasks.filter((t) => taskLevel(t) === k).sort((a, b) => a.due_at.localeCompare(b.due_at)).map((t) => <TaskNote key={`t${t.id}`} t={t} onChanged={loadTasks} onErr={setTaskErr} />),
         ])}
+        {profile?.role === 'admin' && Number(run?.summary?.counts && (run.summary as { counts?: Record<string, unknown> }).counts?.unmatchedCount) > 0 && (
+          <button className="note orange" onClick={() => nav('/properties')}>
+            <span className="note-tag">Hostaway 房源没对上</span>
+            <span className="note-text">Hostaway 里有 {String((run!.summary as { counts: Record<string, unknown> }).counts.unmatchedCount)} 套房在系统里找不到：{((run!.summary as { counts: { unmatchedListings?: string[] } }).counts.unmatchedListings ?? []).slice(0, 6).join('、')}。请在房源档案填 Hostaway 房源 ID，或点“从 Hostaway 同步”新建。</span>
+          </button>
+        )}
         {!todos.length && !tasks.length && <p className="muted">暂时没有要处理的。</p>}
       </div>
     </div>
