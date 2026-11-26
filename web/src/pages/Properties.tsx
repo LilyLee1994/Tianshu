@@ -153,7 +153,7 @@ export default function Properties() {
         </div>
       )}
 
-      {adding && <AddModal assistants={assistants} onClose={() => setAdding(false)} onSaved={(n) => afterSave(`已新增房源 ${n}，请补充基本情况和合同。`)} />}
+      {adding && <AddModal assistants={assistants} onClose={() => setAdding(false)} onSaved={(n, ob) => afterSave(`已新增房源 ${n}，请补充基本情况和合同。${ob}`)} />}
     </div>
   )
 }
@@ -474,19 +474,27 @@ function EditForm({ row, isAdmin, assistants, onCancel, onSaved }: { row: Row; i
   )
 }
 
-function AddModal({ assistants, onClose, onSaved }: { assistants: Assistant[]; onClose: () => void; onSaved: (name: string) => void }) {
+function AddModal({ assistants, onClose, onSaved }: { assistants: Assistant[]; onClose: () => void; onSaved: (name: string, obNote: string) => void }) {
   const [f, setF] = useState({ name: '', address: '', region: '', assistant_id: '' })
+  const [startOb, setStartOb] = useState(true)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const save = async () => {
     if (!f.name.trim()) { setErr('请填房源名称。'); return }
     setBusy(true); setErr('')
-    const { error } = await supabase.from('properties').insert({
+    const { data, error } = await supabase.from('properties').insert({
       name: f.name.trim(), address: f.address.trim() || null, region: f.region.trim() || null, assistant_id: f.assistant_id || null,
-    })
+    }).select('id').single()
+    if (error || !data) { setBusy(false); setErr(error?.code === '23505' ? '这个房源名称已经有了。' : `保存失败：${error?.message}`); return }
+    // 同时开始上线流程：按标准模板生成步骤
+    let note = ''
+    if (startOb) {
+      const { data: tpl, error: e1 } = await supabase.from('onboarding_template').select('seq, name, owner').order('seq')
+      const e2 = e1 || !tpl?.length ? e1 : (await supabase.from('onboarding_steps').insert(tpl.map((t) => ({ property_id: data.id, seq: t.seq, name: t.name, owner: t.owner })))).error
+      note = e1 || e2 || !tpl?.length ? `（上线流程没生成：${(e1 ?? e2)?.message ?? '模板是空的'}，可以到“新房源上线”页再开始。）` : '已开始上线流程，在“新房源上线”里跟进。'
+    }
     setBusy(false)
-    if (error) { setErr(error.code === '23505' ? '这个房源名称已经有了。' : `保存失败：${error.message}`); return }
-    onSaved(f.name.trim())
+    onSaved(f.name.trim(), note)
   }
   return (
     <div className="modal-bg" onClick={onClose}>
@@ -498,6 +506,7 @@ function AddModal({ assistants, onClose, onSaved }: { assistants: Assistant[]; o
         <label>主责助理<select value={f.assistant_id} onChange={(e) => setF({ ...f, assistant_id: e.target.value })}>
           <option value="">先不分配</option>{assistants.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
         </select></label>
+        <label className="check"><input type="checkbox" checked={startOb} onChange={(e) => setStartOb(e.target.checked)} />同时开始上线流程（按标准的 10 步）</label>
         {err && <div className="err">{err}</div>}
         <div className="btn-row">
           <button className="primary small-btn" disabled={busy} onClick={save}>{busy ? '保存中…' : '保存'}</button>
