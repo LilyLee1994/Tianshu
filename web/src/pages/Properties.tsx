@@ -223,7 +223,7 @@ function AccountEditModal({ a, old, found, propertyId, onClose, onSaved }: {
   const upd = (i: number, k: 'email' | 'password' | 'google', v: string) => setOlds(olds.map((o, j) => j === i ? { ...o, [k]: v } : o))
   return (
     <div className="modal-bg" onClick={onClose}>
-      <div className="modal" style={{ width: 560 }} onClick={(e) => e.stopPropagation()}>
+      <div className="modal wide" onClick={(e) => e.stopPropagation()}>
         <h2>编辑账号</h2>
         <h3 style={{ margin: 0 }}>{replace && a ? '新账号' : '当前账号'}</h3>
         {replace && a && <p className="muted small" style={{ margin: 0 }}>保存后，原来的 {a.login} 会自动变成这套房的老账号。</p>}
@@ -237,11 +237,15 @@ function AccountEditModal({ a, old, found, propertyId, onClose, onSaved }: {
         <h3 style={{ margin: '8px 0 0' }}>老账号</h3>
         {!olds.length && <p className="muted small" style={{ margin: 0 }}>没有老账号。</p>}
         {olds.map((o, i) => (
-          <div key={i} style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr 1fr auto', gap: 8 }}>
-            <input placeholder="邮箱" value={o.email} onChange={(e) => upd(i, 'email', e.target.value)} />
-            <input placeholder="密码" value={o.password} onChange={(e) => upd(i, 'password', e.target.value)} />
-            <input placeholder="Google 密码" value={o.google} onChange={(e) => upd(i, 'google', e.target.value)} />
-            <button className="ghost" onClick={() => setOlds(olds.filter((_, j) => j !== i))}>删除</button>
+          <div key={i} className="old-acc">
+            <div className="old-acc-top">
+              <input placeholder="老账号邮箱" value={o.email} onChange={(e) => upd(i, 'email', e.target.value)} />
+              <button className="task-btn" onClick={() => setOlds(olds.filter((_, j) => j !== i))}>删除</button>
+            </div>
+            <div className="old-acc-pw">
+              <input placeholder="Airbnb 密码" value={o.password} onChange={(e) => upd(i, 'password', e.target.value)} />
+              <input placeholder="Google 密码" value={o.google} onChange={(e) => upd(i, 'google', e.target.value)} />
+            </div>
           </div>
         ))}
         <div><button className="ghost" onClick={() => setOlds([...olds, { email: '', password: '', google: '' }])}>+ 加老账号</button></div>
