@@ -50,10 +50,6 @@ export default function Statements() {
     return true
   }), [rows, q, isAssistant, cover])
 
-  const total = useMemo(() => shown.reduce((a, r) => ({
-    rental: a.rental + Number(r.rental_income), comm: a.comm + Number(r.commission), plat: a.plat + Number(r.platform_fee), gst: a.gst + Number(r.gst),
-    cost: a.cost + Number(r.owner_costs), rev: a.rev + Number(r.review_comp), claims: a.claims + Number(r.claims_in), led: a.led + Number(r.ledger_adj ?? 0), adj: a.adj + Number(r.adjustment), pay: a.pay + Number(r.payable),
-  }), { rental: 0, comm: 0, plat: 0, gst: 0, cost: 0, rev: 0, claims: 0, led: 0, adj: 0, pay: 0 }), [shown])
 
   const act = async (body: Record<string, unknown>, ok: string) => {
     setBusy(true); setMsg('')
@@ -115,12 +111,6 @@ export default function Statements() {
                 </td>}
               </tr>
             ))}
-            {shown.length > 0 && (
-              <tr style={{ fontWeight: 600 }}>
-                <td>合计（{shown.length} 个房源）</td><td></td><td></td>
-                <td>{money(total.rental)}</td><td>{money(total.comm)}</td><td>{money(total.plat)}</td><td>{money(total.gst)}</td><td>{money(total.cost)}</td><td>{money(total.rev)}</td><td>{money(total.claims)}</td><td>{money(total.led)}</td><td>{money(total.adj)}</td><td>{money(total.pay)}</td><td></td>{canEdit && <td></td>}
-              </tr>
-            )}
           </tbody>
         </table>
         {!shown.length && <p className="muted pad">{
