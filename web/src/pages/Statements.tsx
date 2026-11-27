@@ -20,7 +20,33 @@ const chip = (s: string) => (s === '已付' ? 'chip green' : s === '已确认' ?
 const amt = (n: number) => {
   if (!n || Number.isNaN(n)) return <span className="muted">—</span>
   const t = `$${Math.abs(n).toFixed(2).replace(/\.00$/, '')}`
-  return n > 0 ? <span style={{ color: '#0f7a4a' }}>+{t}</span> : <span style={{ color: '#c0392b' }}>−{t}</span>
+  return n > 0 ? <span style={{ color: '#0f7a4a', whiteSpace: 'nowrap' }}>+{t}</span> : <span style={{ color: '#c0392b', whiteSpace: 'nowrap' }}>−{t}</span>
+}
+interface LedgerItem { id: number; property_id: number; occurred_date: string; kind: string; category: string; amount: number; reason: string | null; owner_effect: string; guest_name: string | null }
+// 鼠标放上去显示“其他补扣”由哪几笔公司款项组成
+function LedgerTip({ n, items }: { n: number; items: LedgerItem[] }) {
+  if (!items.length) return <>{amt(n)}</>
+  const [pos, setPos] = useState<{ top: number; right: number } | null>(null)
+  const show = (e: React.MouseEvent<HTMLElement>) => { const r = e.currentTarget.getBoundingClientRect(); setPos({ top: r.bottom + 6, right: Math.max(12, window.innerWidth - r.right) }) }
+  return (
+    <span className="tip-wrap" onMouseEnter={show} onMouseLeave={() => setPos(null)}>
+      {amt(n)}
+      <span className="tip-pop" style={pos ? { display: 'block', top: pos.top, right: pos.right } : undefined}>
+        <b>其他补扣明细（来自公司款项）</b>
+        {items.map((l) => {
+          const v = Math.abs(Number(l.amount)) * (l.owner_effect === '扣房东' ? -1 : 1)
+          return (
+            <span className="tip-row" key={l.id}>
+              <span className="muted">{l.occurred_date.slice(5)}</span>
+              <span>{l.kind} · {l.category}{l.guest_name ? ` · ${l.guest_name}` : ''}{l.reason ? <span className="muted small"> {l.reason.length > 28 ? `${l.reason.slice(0, 28)}…` : l.reason}</span> : null}</span>
+              {amt(v)}
+            </span>
+          )
+        })}
+        <span className="tip-row tip-sum"><span /><span>合计</span>{amt(n)}</span>
+      </span>
+    </span>
+  )
 }
 
 export default function Statements() {
@@ -41,6 +67,7 @@ export default function Statements() {
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
   const [adj, setAdj] = useState<St | null>(null)
+  const [lgItems, setLgItems] = useState<Map<number, LedgerItem[]>>(new Map())
 
   const load = useCallback(async () => {
     const { data, error } = await supabase.from('owner_statements')
@@ -48,6 +75,11 @@ export default function Statements() {
       .eq('period_start', from).eq('period_end', to).order('property_id').limit(5000)
     if (error) { setMsg(`读取出错：${error.message}`); return }
     setRows((data ?? []) as never)
+    const lg = await supabase.from('ledger').select('id, property_id, occurred_date, kind, category, amount, reason, owner_effect, guest_name')
+      .in('owner_effect', ['补房东', '扣房东']).gte('occurred_date', from).lte('occurred_date', to).order('occurred_date').limit(5000)
+    const m = new Map<number, LedgerItem[]>()
+    for (const l of (lg.data ?? []) as LedgerItem[]) m.set(l.property_id, [...(m.get(l.property_id) ?? []), l])
+    setLgItems(m)
   }, [from, to])
   useEffect(() => { load() }, [load])
 
@@ -108,7 +140,7 @@ export default function Statements() {
                 <td>{money(r.rental_income)}</td>
                 <td>{money(r.commission)} <span className="muted small">{Math.round(Number(r.commission_rate) * 1000) / 10}%</span></td>
                 <td>{money(r.platform_fee)}</td><td>{money(r.gst)}</td><td>{amt(-Number(r.owner_costs))}</td><td>{amt(-Number(r.review_comp))}</td><td>{amt(Number(r.claims_in))}</td>
-                <td>{amt(Number(r.ledger_adj))}</td>
+                <td><LedgerTip n={Number(r.ledger_adj)} items={lgItems.get(r.property_id) ?? []} /></td>
                 <td title={r.adjustment_note ?? ''}>{amt(Number(r.adjustment))}</td>
                 <td><b>{money(r.payable)}</b></td>
                 <td><span className={chip(r.status)}>{r.status}</span></td>
