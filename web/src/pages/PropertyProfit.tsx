@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { money, matchQ, cleanDesc } from '../lib/ui'
 import Loading from '../lib/Loading'
+import DateRange from '../lib/DateRange'
 
 interface St { property_id: number; period_start: string; period_end: string; commission: number; reservations: number; nights: number; property: { name: string } | null }
 interface Led { id: number; occurred_date: string; reason: string | null; guest_name: string | null; property_id: number; kind: string; category: string; amount: number; owner_effect: string; order_adjusted_at: string | null }
@@ -16,11 +17,13 @@ interface Line {
 const GST = 0.1
 const sgn = (n: number) => (!n ? <span className="muted">—</span> : <span style={{ color: n > 0 ? '#0f7a4a' : '#c0392b', whiteSpace: 'nowrap' }}>{n > 0 ? '+' : '−'}{money(Math.abs(n))}</span>)
 
-async function fetchLines(pid?: number): Promise<{ lines: Line[]; error?: string }> {
+async function fetchLines(pid?: number, from = '', to = ''): Promise<{ lines: Line[]; error?: string }> {
+  // 不选日期 = 从开始到现在的累计；选了日期只算这段时间
+  const rng = <T extends { gte: (c: string, v: string) => T; lte: (c: string, v: string) => T }>(q: T, col: string): T => { let r = q; if (from) r = r.gte(col, from); if (to) r = r.lte(col, to); return r }
     const [st, lg, wo] = await Promise.all([
-      (pid ? supabase.from('owner_statements').select('property_id, period_start, period_end, commission, reservations, nights, property:properties(name)').eq('property_id', pid) : supabase.from('owner_statements').select('property_id, period_start, period_end, commission, reservations, nights, property:properties(name)')).limit(20000),
-      (pid ? supabase.from('ledger').select('id, occurred_date, reason, guest_name, property_id, kind, category, amount, owner_effect, order_adjusted_at').eq('property_id', pid) : supabase.from('ledger').select('id, occurred_date, reason, guest_name, property_id, kind, category, amount, owner_effect, order_adjusted_at')).limit(50000),
-      (pid ? supabase.from('work_orders').select('id, property_id, amount, description, done_date').eq('property_id', pid) : supabase.from('work_orders').select('id, property_id, amount, description, done_date')).eq('type', '维修').eq('status', '已完成').eq('payer', '公司').limit(50000),
+      rng(pid ? supabase.from('owner_statements').select('property_id, period_start, period_end, commission, reservations, nights, property:properties(name)').eq('property_id', pid) : supabase.from('owner_statements').select('property_id, period_start, period_end, commission, reservations, nights, property:properties(name)'), 'period_start').limit(20000),
+      rng(pid ? supabase.from('ledger').select('id, occurred_date, reason, guest_name, property_id, kind, category, amount, owner_effect, order_adjusted_at').eq('property_id', pid) : supabase.from('ledger').select('id, occurred_date, reason, guest_name, property_id, kind, category, amount, owner_effect, order_adjusted_at'), 'occurred_date').limit(50000),
+      rng((pid ? supabase.from('work_orders').select('id, property_id, amount, description, done_date').eq('property_id', pid) : supabase.from('work_orders').select('id, property_id, amount, description, done_date')).eq('type', '维修').eq('status', '已完成').eq('payer', '公司'), 'done_date').limit(50000),
     ])
     const err = st.error ?? lg.error ?? wo.error
     if (err) return { lines: [], error: `读取出错：${err.message}` }
@@ -53,6 +56,10 @@ async function fetchLines(pid?: number): Promise<{ lines: Line[]; error?: string
 
 // 房源盈亏：一套房在这段时间里，公司赚了多少服务费，花了多少维修、赔款等
 export default function PropertyProfit() {
+  const [dFrom, setDFrom] = useState('')
+  const [dTo, setDTo] = useState('')
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
   const [q, setQ] = useState('')
   const [lines, setLines] = useState<Line[]>([])
   const [loading, setLoading] = useState(true)
@@ -61,33 +68,40 @@ export default function PropertyProfit() {
 
   const load = useCallback(async () => {
     setLoading(true); setMsg('')
-    const r = await fetchLines()
+    const r = await fetchLines(undefined, from, to)
     if (r.error) setMsg(r.error); else setLines(r.lines)
     setLoading(false)
-  }, [])
+  }, [from, to])
   useEffect(() => { load() }, [load])
 
   const shown = useMemo(() => lines.filter((l) => !q || matchQ(l.name, q)), [lines, q])
   const tot = (k: keyof Line) => shown.reduce((n, l) => n + Number(l[k]), 0)
+  const setRange = (a: string, b: string) => { setDFrom(a); setDTo(b); setFrom(a); setTo(b) }
+  const thisMonth = () => { const n = new Date(), p = (x: number) => String(x).padStart(2, '0'); setRange(`${n.getFullYear()}-${p(n.getMonth() + 1)}-01`, `${n.getFullYear()}-${p(n.getMonth() + 1)}-${p(new Date(n.getFullYear(), n.getMonth() + 1, 0).getDate())}`) }
+  const lastMonth = () => { const n = new Date(), p = (x: number) => String(x).padStart(2, '0'), d = new Date(n.getFullYear(), n.getMonth() - 1, 1); setRange(`${d.getFullYear()}-${p(d.getMonth() + 1)}-01`, `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate())}`) }
   const exportCsv = () => {
     const head = ['房源', '运营月数', '订单数', '晚数', '服务费(不含GST)', '维修加价', '索赔公司留下', '公司承担维修', '清洁公司费用', '其他支出', '净利润']
     const r2 = (n: number) => Math.round(n * 100) / 100
     const rows = shown.map((l) => [l.name, l.months, l.orders, l.nights, r2(l.fee), r2(l.markup), r2(l.claims), r2(l.repair), r2(l.cleaner), r2(l.other), r2(l.profit)])
     const csv = '﻿' + [head, ...rows].map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
-    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); a.download = `房源盈亏.csv`; a.click()
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); a.download = `房源盈亏${from || to ? `_${from || '起'}至${to || '今'}` : '_累计'}.csv`; a.click()
   }
 
   return (
     <div>
-      <p className="muted small">每套房从开始运营到现在，公司的总收支：<b>赚</b>＝服务费（佣金去掉 GST）＋维修向房东多收的差额＋索赔里公司留下的钱；<b>花</b>＝公司自己承担的维修、清洁公司费用、公司自己消化的退款和赔款。已经从房东结算里扣回的、已在订单里平账的特殊折扣，都不算公司的损失。服务费、运营月数、订单和晚数按“房东结算”统计，没生成结算单的月份不在里面。</p>
+      <p className="muted small">每套房的公司收支。不选日期是从开始运营到现在的累计，选了日期只算这段时间：<b>赚</b>＝服务费（佣金去掉 GST）＋维修向房东多收的差额＋索赔里公司留下的钱；<b>花</b>＝公司自己承担的维修、清洁公司费用、公司自己消化的退款和赔款。已经从房东结算里扣回的、已在订单里平账的特殊折扣，都不算公司的损失。服务费、运营月数、订单和晚数按“房东结算”统计，没生成结算单的月份不在里面。</p>
       <div className="btn-row" style={{ marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        <DateRange from={dFrom} to={dTo} onChange={(a, b) => { if (a && b) setRange(a, b); else setRange('', '') }} />
+        <button className="ghost" onClick={thisMonth}>本月</button>
+        <button className="ghost" onClick={lastMonth}>上个月</button>
+        <button className="ghost" onClick={() => setRange('', '')}>全部（累计）</button>
         <input placeholder="搜索房源" value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 160 }} />
         <button className="ghost" onClick={exportCsv} disabled={!shown.length}>导出 CSV</button>
       </div>
       {msg && <p className="error">{msg}</p>}
       {loading ? <Loading /> : !shown.length ? <p className="muted pad">还没有数据。</p> : (
         <>
-          <p className="small">{shown.length} 套房 · 净利润合计 <b>{sgn(tot('profit'))}</b>（服务费 {money(tot('fee'))}，维修加价 {money(tot('markup'))}，索赔留下 {money(tot('claims'))}，支出 {money(-(tot('repair') + tot('cleaner') + tot('other')))}）</p>
+          <p className="small">{from && to ? `${from} ~ ${to}` : '累计'} · {shown.length} 套房 · 净利润合计 <b>{sgn(tot('profit'))}</b>（服务费 {money(tot('fee'))}，维修加价 {money(tot('markup'))}，索赔留下 {money(tot('claims'))}，支出 {money(-(tot('repair') + tot('cleaner') + tot('other')))}）</p>
           <div className="table-wrap">
             <table style={{ minWidth: 980 }}>
               <thead><tr><th>房源</th><th>运营月数</th><th>订单 / 晚</th><th style={{ textAlign: 'right' }}>服务费</th><th style={{ textAlign: 'right' }}>维修加价</th><th style={{ textAlign: 'right' }}>索赔留下</th><th style={{ textAlign: 'right' }}>公司承担维修</th><th style={{ textAlign: 'right' }}>清洁公司费用</th><th style={{ textAlign: 'right' }}>其他支出</th><th style={{ textAlign: 'right' }}>净利润</th></tr></thead>
