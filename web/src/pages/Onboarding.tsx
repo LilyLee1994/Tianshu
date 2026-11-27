@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useFocusScroll } from '../lib/focus'
+import { coveredAssistantIds } from '../lib/cover'
 
 const STATUSES = ['未完成', '进行中', '已完成']
 interface Step { id: number; property_id: number; seq: number; name: string; owner: string | null; status: string; note: string | null; done_at: string | null }
@@ -11,6 +12,10 @@ const stColor = (s: string) => (s === '已完成' ? '#1f6b34' : s === '进行中
 
 export default function Onboarding() {
   const { profile } = useAuth()
+  const isAssistant = profile?.role === 'assistant'
+  const [cover, setCover] = useState<Set<string>>(new Set())
+  useEffect(() => { if (isAssistant && profile) coveredAssistantIds(profile.id).then(setCover) }, [profile?.id, isAssistant]) // eslint-disable-line react-hooks/exhaustive-deps
+  const mineAid = (aid: string | null | undefined) => !isAssistant || (!!aid && cover.has(aid))
   const [steps, setSteps] = useState<Step[]>([])
   const [props, setProps] = useState<Prop[]>([])
   const [open, setOpen] = useState<number | null>(null)
@@ -66,9 +71,9 @@ export default function Onboarding() {
   }, [steps])
   useFocusScroll('ob-', focusId, steps.length)
   const flows = useMemo(() => [...byProp.entries()].map(([pid, st]) => ({ prop: props.find((x) => x.id === pid), steps: st, done: st.filter((x) => x.status === '已完成').length }))
-    .filter((f) => f.prop && (show === 'done' ? f.done === f.steps.length : f.done < f.steps.length))
-    .sort((a, b) => a.prop!.name.localeCompare(b.prop!.name)), [byProp, props, show])
-  const free = props.filter((p) => !byProp.has(p.id))
+    .filter((f) => f.prop && mineAid(f.prop.assistant_id) && (show === 'done' ? f.done === f.steps.length : f.done < f.steps.length))
+    .sort((a, b) => a.prop!.name.localeCompare(b.prop!.name)), [byProp, props, show, isAssistant, cover])
+  const free = props.filter((p) => !byProp.has(p.id) && mineAid(p.assistant_id))
 
   const patch = async (id: number, v: Partial<Step>) => {
     const body: Record<string, unknown> = { ...v }
