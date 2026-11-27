@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom'
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { chipOf, money, today } from '../lib/ui'
@@ -8,7 +9,7 @@ interface Order {
   id: number; property_id: number; type: OType; executor: string | null; description: string | null
   assigned_to: string | null; vendor_name: string | null; planned_date: string | null; done_date: string | null
   status: string; amount: number | null; payer: string; owner_notified: boolean; urgent: boolean; created_at: string
-  photos: string[]; damage_photos: string[]; damage_report: string | null
+  photos: string[]; damage_photos: string[]; damage_report: string | null; damage_handled?: boolean; property_id?: number
   property: { name: string } | null; worker: { name: string } | null
 }
 interface Worker { id: string; name: string; role: string }
@@ -79,6 +80,7 @@ function OrderRow({ o, workers, onUpdate }: { o: Order; workers: Worker[]; onUpd
   const flow = flowOf(o.type, o.executor)
   const idx = flow.indexOf(o.status)
   const next = idx >= 0 && idx < flow.length - 1 ? flow[idx + 1] : ''
+  const nav = useNavigate()
   const [pick, setPick] = useState('')
   const [vendor, setVendor] = useState('')
   const [amt, setAmt] = useState(o.amount?.toString() ?? '')
@@ -118,7 +120,13 @@ function OrderRow({ o, workers, onUpdate }: { o: Order; workers: Worker[]; onUpd
     <tr>
       <td>{o.created_at.slice(5, 10).replace('-', '/')}</td>
       <td><b>{o.property?.name}</b>{o.urgent && <span className="chip amber">次日入住</span>}</td>
-      <td>{o.type}</td><td>{o.description ?? '—'}{o.damage_report && <div className="err small">⚠ 清洁上报损坏：{o.damage_report}</div>}</td><td>{who}</td>
+      <td>{o.type}</td><td>{o.description ?? '—'}{o.damage_report && (o.damage_handled
+        ? <div className="muted small">清洁上报损坏（已处理）：{o.damage_report}</div>
+        : <div className="err small">⚠ 清洁上报损坏：{o.damage_report}
+            <div className="btn-row" style={{ margin: '6px 0 0' }}>
+              <button className="task-btn" onClick={() => nav(`/claims?property=${o.property_id}`)}>去提索赔</button>
+              <button className="task-btn" onClick={() => onUpdate(o.id, { damage_handled: true }, '已标记为已处理。')}>已处理</button>
+            </div></div>)}</td><td>{who}</td>
       <td><span className={chipOf(o.status)}>{o.status}</span></td>
       <td>{o.type === '清洁' ? '—' : `${money(o.amount)}（${o.payer}）`}</td>
       <td>{action}{nPics > 0 && <button className="ghost" onClick={showPics}>看照片（{nPics}）</button>}
