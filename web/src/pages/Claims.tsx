@@ -199,7 +199,6 @@ function EvidenceModal({ claim, onClose }: { claim: Claim; onClose: () => void }
       const before = (prev ?? []).find((x) => x.id !== w?.id && (x.photos?.length ?? 0) > 0)
       const g: Grp[] = []
       g.push({ title: '入住前最近一次清洁', note: before ? `${before.done_date} 清洁完成` : '没有找到入住前的清洁照片', paths: before?.photos ?? [] })
-      g.push({ title: '入住后清洁照', note: w?.done_date ? `${w.done_date} 清洁完成` : undefined, paths: w?.photos ?? [] })
       g.push({ title: '清洁工上报的损坏照', paths: (w?.damage_photos?.length ? w.damage_photos : claim.photos) ?? [] })
       setGroups(g)
       const all = g.flatMap((x) => x.paths)
@@ -237,7 +236,7 @@ function EvidenceModal({ claim, onClose }: { claim: Claim; onClose: () => void }
     <div className="modal-bg" onClick={onClose}>
       <div className="modal" style={{ width: 720 }} onClick={(e) => e.stopPropagation()}>
         <h2>证据照片 · {claim.property?.name}</h2>
-        <p className="muted small">提交平台需要：入住前的清洁照 + 入住后的清洁照/损坏照。</p>
+        <p className="muted small">提交平台需要：入住前的清洁照 + 清洁工上报的损坏照。</p>
         {!groups && <p className="muted">加载中…</p>}
         {(groups ?? []).map((g) => (
           <div key={g.title} style={{ marginBottom: 12 }}>
