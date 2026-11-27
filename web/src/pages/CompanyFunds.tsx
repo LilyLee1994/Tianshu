@@ -6,10 +6,10 @@ import { coveredAssistantIds } from '../lib/cover'
 import { today } from '../lib/ui'
 
 const PLATFORMS = ['Airbnb', 'Booking.com', 'Vrbo', 'Terri Scheer', 'Turvi', '直订', '线下', '其他']
-const KINDS = ['收款', '退款', '押金收取', '押金退还', '线下转账', '平台扣款']
-const OUT_KINDS = ['退款', '押金退还', '平台扣款']  // 这几种是支出，金额存成负数
+const KINDS = ['收款', '押金收取', '线下转账', '退款', '协商退款', '清洁问题退款', '押金退还', '线下转出', '平台扣款', '赔付房东', '垫付费用']
+const OUT_KINDS = ['退款', '协商退款', '清洁问题退款', '押金退还', '线下转出', '平台扣款', '赔付房东', '垫付费用']  // 这几种是支出，金额存成负数
 const EFFECTS = ['无', '补房东', '扣房东']
-const CATS = ['房费', '清洁费', '早入住', '晚退房', '加人/加晚', '延长入住', '取消订单', '投诉补偿', '预防差评', '索赔', '押金', '其他']
+const CATS = ['房费', '清洁费', '早入住', '晚退房', '加人/加晚', '延长入住', '取消订单', '投诉补偿', '预防差评', '删差评', '清洁问题', '钥匙/门禁', '房东报销', '索赔', '押金', '其他']
 const PAYERS = ['公司', '房东', '清洁公司', '客人', '平台', '无责任']
 const m = (n: number) => `$${Math.abs(n).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
@@ -87,7 +87,7 @@ export default function CompanyFunds() {
   return (
     <div>
       <div className="title-row"><h1>公司款项</h1><button onClick={() => setEdit('new')}>+ 新增款项</button></div>
-      <p className="muted small">记录每一笔和订单相关的收款、退款、押金、线下转账。退款、退押金、平台扣款记为支出。“对房东结算”选“补房东”或“扣房东”的，会自动计入当月房东结算（选“无”表示公司自己消化，或已在 Hostaway 订单里改好）。</p>
+      <p className="muted small">记录每一笔和订单相关的收款、退款、押金、线下转账。支出类型有：退款、协商退款、清洁问题退款、退押金、线下转出、平台扣款、赔付房东、垫付费用，金额都填正数，系统自动记成支出。“对房东结算”选“补房东”或“扣房东”的，会自动计入当月房东结算（选“无”表示公司自己消化，或已在 Hostaway 订单里改好）。</p>
       <div className="btn-row" style={{ marginBottom: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         <span className="muted small">日期</span>
         <input type="date" value={from} onChange={(e) => { setFrom(e.target.value); if (to && to < e.target.value) setTo(e.target.value) }} />
@@ -177,7 +177,7 @@ function EditModal({ row, props, isAdmin, onClose, onSaved }: { row: Row | null;
           <label>订单号<input value={f.order_ref} onChange={(e) => set('order_ref', e.target.value)} /></label>
           <label>入住日期<input type="date" value={f.check_in} onChange={(e) => set('check_in', e.target.value)} /></label>
           <label>退房日期<input type="date" value={f.check_out} onChange={(e) => set('check_out', e.target.value)} /></label>
-          <label>款项类型<select value={f.kind} onChange={(e) => set('kind', e.target.value)}>{KINDS.map((x) => <option key={x}>{x}</option>)}</select></label>
+          <label>款项类型<select value={f.kind} onChange={(e) => set('kind', e.target.value)}><optgroup label="收入">{KINDS.filter((x) => !OUT_KINDS.includes(x)).map((x) => <option key={x}>{x}</option>)}</optgroup><optgroup label="支出">{OUT_KINDS.map((x) => <option key={x}>{x}</option>)}</optgroup></select></label>
           <label>类别<select value={f.category} onChange={(e) => set('category', e.target.value)}>{CATS.map((x) => <option key={x}>{x}</option>)}</select></label>
           <label>金额（$，填正数）<input inputMode="decimal" value={f.amount} onChange={(e) => set('amount', e.target.value)} /></label>
           <label>责任方<select value={f.payer} onChange={(e) => set('payer', e.target.value)}><option value="">不填</option>{PAYERS.map((x) => <option key={x}>{x}</option>)}</select></label>
