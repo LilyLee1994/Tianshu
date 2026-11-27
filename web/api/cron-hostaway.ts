@@ -266,14 +266,18 @@ async function autoCleaning(db: ReturnType<typeof adminClient>, today: string) {
       planned_date: dep, urgent, reservation_id: r.id, assigned_to: only, status: only ? '已派单' : '待派单',
     }
   })
-  if (fresh.length) {
-    await db.from('work_orders').insert(fresh)
-    // 新生成的清洁单发企业微信：已自动派给清洁公司的 → 清洁群；没人可派的 → 助理群提醒去派单。失败不影响同步
+  if (fresh.length) await db.from('work_orders').insert(fresh)
+
+  // 只在退房当天发企业微信：已派给清洁公司的 → 清洁群；没人可派的 → 助理群提醒去派单。
+  // 用 notified_at 记录发过没有（没运行 075 迁移时查不到，就不发，不影响同步）。
+  const { data: td } = await db.from('work_orders').select('id, property_id, planned_date, urgent, assigned_to').eq('type', '清洁').eq('planned_date', today).in('status', ['待派单', '已派单']).is('notified_at', null)
+  if (td?.length) {
     const nm = new Map((pr ?? []).map((p) => [p.id as number, String(p.name ?? '')]))
-    const line = (o: (typeof fresh)[number]) => `${o.urgent ? '【紧急】' : ''}${nm.get(o.property_id as number) ?? ''}，退房 ${String(o.planned_date).slice(5)}`
-    const sent = fresh.filter((o) => o.assigned_to), wait = fresh.filter((o) => !o.assigned_to)
-    if (sent.length) await notifyGroup(db, 'cleaner', `新增 ${sent.length} 张清洁单`, sent.map(line))
-    if (wait.length) await notifyGroup(db, 'assistant', `有 ${wait.length} 张清洁单待派单`, wait.map(line))
+    const line = (o: (typeof td)[number]) => `${o.urgent ? '【紧急】' : ''}${nm.get(o.property_id as number) ?? ''}，今天退房`
+    const sent = td.filter((o) => o.assigned_to), wait = td.filter((o) => !o.assigned_to)
+    if (sent.length) await notifyGroup(db, 'cleaner', `今天有 ${sent.length} 张清洁单`, sent.map(line))
+    if (wait.length) await notifyGroup(db, 'assistant', `今天有 ${wait.length} 张清洁单待派单`, wait.map(line))
+    await db.from('work_orders').update({ notified_at: new Date().toISOString() }).in('id', td.map((o) => o.id))
   }
 
   // 订单后来取消、清洁单还没做的，标记已取消
