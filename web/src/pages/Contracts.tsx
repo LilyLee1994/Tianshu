@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { useFocusScroll } from '../lib/focus'
 import { supabase } from '../lib/supabase'
 import { chipOf } from '../lib/ui'
 import { statusOf } from './Properties'
@@ -12,6 +14,8 @@ export const daysTo = (d: string | null) => (d ? Math.round((new Date(d).getTime
 export default function Contracts() {
   const [rows, setRows] = useState<Row[]>([])
   const [loading, setLoading] = useState(true)
+  const focusId = Number(useSearchParams()[0].get('id')) || null
+  useFocusScroll('ct-', focusId, loading)
   useEffect(() => {
     supabase.from('properties').select('id, name, property_contracts(*)').eq('legacy', false).order('name').then(({ data }) => { setRows((data ?? []) as unknown as Row[]); setLoading(false) })
   }, [])
@@ -27,7 +31,7 @@ export default function Contracts() {
             {rows.map((r) => {
               const c = r.property_contracts, d = daysTo(c?.end_date ?? null), st = statusOf(c as never)
               return (
-                <tr key={r.id}>
+                <tr key={r.id} id={`ct-${r.id}`} className={r.id === focusId ? 'focus-row' : undefined}>
                   <td><b>{r.name}</b></td><td>{c?.water ?? '—'}</td><td>{c?.power ?? '—'}</td><td>{c?.gas ?? '—'}</td><td>{c?.internet ?? '—'}</td><td>{c?.recharge_back ?? '—'}</td>
                   <td>{c?.end_date ?? '—'}{d !== null && d >= 0 && d <= 60 && <span className="chip amber">{d} 天后到期</span>}{d !== null && d < 0 && <span className="chip amber">已到期</span>}</td>
                   <td><span className={chipOf(st)}>{st}</span></td>

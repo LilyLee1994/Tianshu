@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useFocusScroll } from '../lib/focus'
 
 const STATUSES = ['未完成', '进行中', '已完成']
 interface Step { id: number; property_id: number; seq: number; name: string; owner: string | null; status: string; note: string | null; done_at: string | null }
@@ -13,6 +14,8 @@ export default function Onboarding() {
   const [steps, setSteps] = useState<Step[]>([])
   const [props, setProps] = useState<Prop[]>([])
   const [open, setOpen] = useState<number | null>(null)
+  const focusId = Number(useSearchParams()[0].get('property')) || null
+  useEffect(() => { if (focusId) setOpen(focusId) }, [focusId])
   const [show, setShow] = useState<'doing' | 'done'>('doing')
   const [adding, setAdding] = useState(false)
   const [err, setErr] = useState('')
@@ -61,6 +64,7 @@ export default function Onboarding() {
     for (const x of steps) m.set(x.property_id, [...(m.get(x.property_id) ?? []), x])
     return m
   }, [steps])
+  useFocusScroll('ob-', focusId, steps.length)
   const flows = useMemo(() => [...byProp.entries()].map(([pid, st]) => ({ prop: props.find((x) => x.id === pid), steps: st, done: st.filter((x) => x.status === '已完成').length }))
     .filter((f) => f.prop && (show === 'done' ? f.done === f.steps.length : f.done < f.steps.length))
     .sort((a, b) => a.prop!.name.localeCompare(b.prop!.name)), [byProp, props, show])
@@ -145,7 +149,7 @@ export default function Onboarding() {
           const next = st.find((x) => x.status !== '已完成')
           const canEdit = profile?.role !== 'repairman' && profile?.role !== 'cleaner'
           return (
-            <div key={prop!.id} className="ob-card">
+            <div key={prop!.id} id={`ob-${prop!.id}`} className={prop!.id === focusId ? 'ob-card focus-card' : 'ob-card'}>
               <button className="ob-head" onClick={() => setOpen(isOpen ? null : prop!.id)}>
                 <span className="ob-name">{prop!.name}</span>
                 <span className="muted small">{prop!.assistant?.name ?? '未分配助理'}</span>

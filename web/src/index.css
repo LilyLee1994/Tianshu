@@ -182,3 +182,6 @@ td .ghost, td button.ghost { white-space: nowrap; }
 
 .focus-row td { background: #fff3c4 !important; animation: focus-fade 4s ease-out 1.5s forwards; }
 @keyframes focus-fade { to { background: transparent; } }
+
+.ob-card.focus-card { box-shadow: 0 0 0 3px #f2c94c; animation: card-fade 4s ease-out 1.5s forwards; }
+@keyframes card-fade { to { box-shadow: 0 0 0 0 transparent; } }

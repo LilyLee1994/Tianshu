@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { useFocusScroll } from '../lib/focus'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { coveredAssistantIds } from '../lib/cover'
@@ -13,6 +15,7 @@ export default function Alerts() {
   const [cover, setCover] = useState<Set<string> | null>(null)
   const [done, setDone] = useState(false)
   const [msg, setMsg] = useState('')
+  const focusId = Number(useSearchParams()[0].get('id')) || null
   const isAssistant = profile?.role === 'assistant'
 
   useEffect(() => { if (isAssistant && profile) coveredAssistantIds(profile.id).then(setCover); else setCover(new Set()) }, [profile?.id, isAssistant]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -28,6 +31,7 @@ export default function Alerts() {
   const mine = (r: Alert) => !isAssistant || (!!r.property?.assistant_id && !!cover?.has(r.property.assistant_id))
   const shown = rows.filter((r) => mine(r) && (done ? r.status === '已处理' : r.status === '待处理'))
 
+  useFocusScroll('al-', focusId, rows.length)
   const handle = async (r: Alert) => {
     const note = window.prompt('备注（可不填，比如“房东改价了，正常”）：') ?? null
     if (note === null) return
@@ -49,7 +53,7 @@ export default function Alerts() {
         <table className="tight" style={{ width: 'auto', minWidth: 0 }}>
           <thead><tr><th>房源</th><th>负责人</th><th>类型</th><th>情况</th><th>客人</th><th>提醒时间</th>{done && <th>处理</th>}<th></th></tr></thead>
           <tbody>{shown.map((r) => (
-            <tr key={`${r.reservation_id}${r.kind}`}>
+            <tr key={`${r.reservation_id}${r.kind}`} id={`al-${r.reservation_id}-${r.kind}`} className={r.reservation_id === focusId ? 'focus-row' : undefined}>
               <td><b>{r.property?.name}</b></td><td>{r.property?.assistant?.name ?? <span className="muted">未分配</span>}</td><td><span className="chip amber">{r.kind}</span></td>
               <td className="small">{r.detail}</td><td className="small">{r.reservation?.guest_name ?? '—'}</td>
               <td className="muted small">{fmtAt(r.created_at)}</td>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { useFocusScroll } from '../lib/focus'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { coveredAssistantIds } from '../lib/cover'
@@ -26,7 +27,8 @@ export default function Reviews() {
   const isAssistant = profile?.role === 'assistant'
   const [sp, setSp] = useSearchParams()
   const onlyProp = Number(sp.get('property')) || null
-  const [days, setDays] = useState(onlyProp ? 90 : 7)
+  const focusId = Number(sp.get('id')) || null
+  const [days, setDays] = useState(onlyProp || focusId ? 90 : 7)
   const [props, setProps] = useState<Prop[]>([])
   const [stats, setStats] = useState<Stat[]>([])
   const [revs, setRevs] = useState<Rev[]>([])
@@ -57,6 +59,7 @@ export default function Reviews() {
 
   const bad = revs.filter((r) => badOne(r.channel_name, Number(r.rating)) && visible(r.property_id) && (!onlyProp || r.property_id === onlyProp))
 
+  useFocusScroll('rv-', focusId, revs.length)
   const lowRows = useMemo(() => {
     const by = new Map<number, { a?: Stat; b?: Stat }>()
     for (const s of stats) {
@@ -94,7 +97,7 @@ export default function Reviews() {
           <table style={{ minWidth: 900 }}>
             <thead><tr><th>房源</th><th>负责助理</th><th>平台</th><th>评分</th><th>日期</th><th>评价内容</th><th>处理</th></tr></thead>
             <tbody>{bad.map((r) => (
-              <tr key={r.id}>
+              <tr key={r.id} id={`rv-${r.id}`} className={r.id === focusId ? 'focus-row' : undefined}>
                 <td>{pById.get(r.property_id)?.name}</td><td>{pById.get(r.property_id)?.assistant?.name ?? '—'}</td>
                 <td>{r.channel_name}</td><td style={{ color: '#b3261e', fontWeight: 600 }}>{showScore(r.channel_name, Number(r.rating))}</td>
                 <td>{r.reviewed_at.slice(0, 10)}</td><td style={{ maxWidth: 360 }}>{r.text ? r.text.slice(0, 160) : <span className="muted">没有文字评价</span>}</td>

@@ -41,7 +41,7 @@ export default function Dashboard() {
       supabase.from('review_actions').select('review_id, status').limit(5000),
       supabase.from('claims').select('id, content, status, property:properties(name, assistant_id)').in('status', ['待提交', '联系客人中']).limit(50),
       profile?.role === 'assistant' ? supabase.from('shift_months').select('status').eq('user_id', profile.id).eq('month', `${openMonth()}-01`).maybeSingle() : Promise.resolve({ data: null }),
-      supabase.from('order_alerts').select('kind, detail, property:properties(name, assistant_id)').eq('status', '待处理').limit(200),
+      supabase.from('order_alerts').select('reservation_id, kind, detail, property:properties(name, assistant_id)').eq('status', '待处理').limit(200),
       profile?.role === 'admin' ? supabase.from('shift_requests').select('month, reason, user:profiles!shift_requests_user_id_fkey(name)').eq('status', '待审批').limit(50) : Promise.resolve({ data: [] }),
           profile?.role === 'assistant' ? coveredAssistantIds(profile.id) : Promise.resolve(new Set<string>()),
       supabase.from('work_orders').select('id, damage_report, property:properties(name, assistant_id)').not('damage_report', 'is', null).eq('damage_handled', false).neq('status', '已取消'),
@@ -55,7 +55,7 @@ export default function Dashboard() {
         t.push({ tag: '排班', text: isNext ? `${om} 的排班已开放（每月 ${OPEN_DAY} 号开放），请选好 4 天休息、4 天居家办公并提交` : `${om} 的排班还没提交，请选好 4 天休息、4 天居家办公并提交`, to: '/shifts', cls: 'amber', lv: 'blue' })
       }
       for (const r of (sr.data ?? []) as unknown as { month: string; reason: string | null; user: { name: string } | null }[]) t.push({ tag: '排班', text: `${r.user?.name ?? '助理'} 申请变更 ${r.month.slice(0, 7)} 的排班：${r.reason || '（没写原因）'}`, to: '/shifts', cls: 'blue', lv: 'yellow' })
-      for (const a of (oa.data ?? []) as unknown as { kind: string; detail: string; property: { name: string; assistant_id: string | null } | null }[]) if (mine(a.property?.assistant_id)) t.push({ tag: '订单异常', text: `${tagOf(a.property?.assistant_id)}${a.property?.name} · ${a.kind}：${a.detail}`, to: '/alerts', cls: 'purple', lv: 'red' })
+      for (const a of (oa.data ?? []) as unknown as { reservation_id: number; kind: string; detail: string; property: { name: string; assistant_id: string | null } | null }[]) if (mine(a.property?.assistant_id)) t.push({ tag: '订单异常', text: `${tagOf(a.property?.assistant_id)}${a.property?.name} · ${a.kind}：${a.detail}`, to: `/alerts?id=${a.reservation_id}`, cls: 'purple', lv: 'red' })
       // 清洁上报损坏：没点“已处理”之前一直提醒负责这套房的助理
       let dmRows = dm.data
       if (dm.error) { const r = await supabase.from('work_orders').select('id, damage_report, property:properties(name, assistant_id)').not('damage_report', 'is', null).neq('status', '已取消'); dmRows = r.data }  // 还没运行 048 时，不过滤“已处理”
@@ -73,9 +73,9 @@ export default function Dashboard() {
         e.st.push({ name: x.name, status: x.status }); obBy.set(x.property_id, e)
       }
       if (profile?.role === 'admin') {
-        for (const e of obBy.values()) {
+        for (const [pid, e] of obBy.entries()) {
           const left = e.st.filter((s) => s.status !== '已完成')
-          if (left.length) t.push({ tag: '上线流程', text: `${e.name} 上线进度 ${e.st.length - left.length}/${e.st.length}，下一步：${left[0].name}`, to: '/onboarding', cls: 'blue', lv: 'yellow' })
+          if (left.length) t.push({ tag: '上线流程', text: `${e.name} 上线进度 ${e.st.length - left.length}/${e.st.length}，下一步：${left[0].name}`, to: `/onboarding?property=${pid}`, cls: 'blue', lv: 'yellow' })
         }
       }
       const myName = (profile?.name ?? '').trim().toLowerCase()
@@ -88,7 +88,7 @@ export default function Dashboard() {
           if (!who.includes(myName)) continue
           if (x.name === '上线') launchMine.add(x.property_id)
           const hint = /guidebook/i.test(x.name) ? '，请填 Guidebook 链接' : /stra/i.test(x.name) ? '，请填 STRA 编号' : /房源档案|个体表/.test(x.name) ? '，请完善房源档案' : ''
-          stepNotes.push({ pid: x.property_id, isLaunch: x.name === '上线', todo: { tag: `上线 · ${x.status}`, text: `${x.property?.name} · ${x.name}${hint}`, to: '/onboarding', cls: 'blue', lv: x.status === '进行中' ? 'yellow' : 'orange' } })
+          stepNotes.push({ pid: x.property_id, isLaunch: x.name === '上线', todo: { tag: `上线 · ${x.status}`, text: `${x.property?.name} · ${x.name}${hint}`, to: `/onboarding?property=${x.property_id}`, cls: 'blue', lv: x.status === '进行中' ? 'yellow' : 'orange' } })
         }
       }
       let pending = 0, doing = 0
@@ -104,18 +104,18 @@ export default function Dashboard() {
       const readySet = new Set<number>()   // 已经出了「可上线」便签的房源
       for (const r of (p.data ?? []) as unknown as { id: number; name: string; assistant_id: string | null; property_contracts: never }[]) {
         const c = r.property_contracts as { end_date: string | null } | null
-        if (statusOf(c as never) === '待登记合同') { incomplete++; t.push({ tag: '合同', text: `${r.name} 水电燃气信息还没填完整，填完才能上线`, to: '/properties', cls: 'amber', lv: 'yellow' }) }
+        if (statusOf(c as never) === '待登记合同') { incomplete++; t.push({ tag: '合同', text: `${r.name} 水电燃气信息还没填完整，填完才能上线`, to: `/properties?id=${r.id}`, cls: 'amber', lv: 'yellow' }) }
         // 资料填齐、运营阶段还是“筹备中”：可以上线了，提醒负责的助理去上线
         if (statusOf(c as never) === '可上线' && (mine(r.assistant_id) || launchMine.has(r.id))) { readySet.add(r.id); t.push({ tag: '可上线', text: `${tagOf(r.assistant_id)}${r.name} 资料已填齐，可以上线了；上线后把运营阶段改为“运营中”`, to: `/properties?id=${r.id}`, cls: 'blue', lv: 'orange' }) }
         const d = daysTo(c?.end_date ?? null)
-        if (d !== null && d >= 0 && d <= 60) t.push({ tag: '到期', text: `${r.name} 合同 ${d} 天后到期`, to: '/contracts', cls: 'amber', lv: d <= 7 ? 'red' : d <= 30 ? 'orange' : 'yellow' })
+        if (d !== null && d >= 0 && d <= 60) t.push({ tag: '到期', text: `${r.name} 合同 ${d} 天后到期`, to: `/contracts?id=${r.id}`, cls: 'amber', lv: d <= 7 ? 'red' : d <= 30 ? 'orange' : 'yellow' })
       }
       // 「可上线」便签和「上线」步骤便签是同一件事，合并成一张：有「可上线」就不再出「上线」那张
       for (const n of stepNotes) if (!(n.isLaunch && readySet.has(n.pid))) t.push(n.todo)
       const done = new Set((ra.data ?? []).filter((a: { status: string }) => a.status !== '待处理').map((a: { review_id: number }) => a.review_id))
       for (const r of (rv.data ?? []) as unknown as { id: number; channel_name: string | null; rating: number; reviewed_at: string; property: { name: string; assistant_id: string | null } }[]) {
         if (!mine(r.property?.assistant_id)) continue
-        if (badOne(r.channel_name, Number(r.rating)) && !done.has(r.id)) t.push({ tag: '差评', text: `${tagOf(r.property?.assistant_id)}${r.property?.name} · ${r.channel_name} ${r.channel_name === 'Airbnb' ? Number(r.rating) / 2 + ' 星' : r.rating + ' 分'} · ${r.reviewed_at.slice(0, 10)}`, to: '/reviews', cls: 'purple', lv: 'red' })
+        if (badOne(r.channel_name, Number(r.rating)) && !done.has(r.id)) t.push({ tag: '差评', text: `${tagOf(r.property?.assistant_id)}${r.property?.name} · ${r.channel_name} ${r.channel_name === 'Airbnb' ? Number(r.rating) / 2 + ' 星' : r.rating + ' 分'} · ${r.reviewed_at.slice(0, 10)}`, to: `/reviews?id=${r.id}`, cls: 'purple', lv: 'red' })
       }
       for (const c of (cl.data ?? []) as unknown as { id: number; content: string; status: string; property: { name: string; assistant_id: string | null } }[]) if (mine(c.property?.assistant_id)) t.push({ tag: '索赔', text: `${tagOf(c.property?.assistant_id)}${c.property?.name} · ${c.content}，${c.status === '待提交' ? '还没联系客人' : '联系客人中，等结果'}`, to: `/claims?id=${c.id}`, cls: 'amber', lv: 'orange' })
       const rank: Record<Lv, number> = { red: 0, orange: 1, yellow: 2, blue: 3 }
