@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../lib/auth'
 import { supabase } from '../lib/supabase'
 import { money, cleanDesc } from '../lib/ui'
 import { downloadRepairPdf } from '../lib/repairPdf'
@@ -14,6 +15,8 @@ const monthRange = (offset: number) => { const n = new Date(); return [ymd(new D
 const workerOf = (r: Row) => r.worker?.name ?? r.vendor_name ?? '未指定师傅'
 
 export default function RepairSettle() {
+  const { profile } = useAuth()
+  const isFin = profile?.role === 'finance'   // 财务看不到维修单，所以没有“看工单”“去处理”
   const nav = useNavigate()
   const [dFrom, setDFrom] = useState(monthRange(0)[0])
   const [dTo, setDTo] = useState(monthRange(0)[1])
@@ -104,7 +107,7 @@ export default function RepairSettle() {
         <label className="small" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><input type="checkbox" style={{ width: 18, height: 18, minHeight: 0 }} checked={!!shown.length && picked.length === shown.length} onChange={(e) => toggle(shown.map((r) => r.id), e.target.checked)} />全选（已选 {picked.length} / {shown.length}）</label>
         <button className="ghost" onClick={exportCsv} disabled={!picked.length}>导出已选 CSV</button>
       </div>
-      {pending > 0 && <p className="warn small">还有 {pending} 张维修单是“待确认费用”，确认金额、完成之后才会算进来。<button className="task-btn" onClick={() => nav('/repairs?tab=list')}>去处理</button></p>}
+      {pending > 0 && <p className="warn small">还有 {pending} 张维修单是“待确认费用”，确认金额、完成之后才会算进来。{!isFin && <button className="task-btn" onClick={() => nav('/repairs?tab=list')}>去处理</button>}</p>}
       {msg && <p className="muted">{msg}</p>}
       {!groups.length && <p className="muted pad">{from} 至 {to} 没有符合条件的已完成维修单。</p>}
       {groups.map((g) => (
@@ -130,7 +133,7 @@ export default function RepairSettle() {
                   <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{r.payer === '房东' ? money(r.owner_charge ?? r.amount) : <span className="muted">—</span>}</td>
                   <td>{r.settled_at ? <span className="chip green" style={{ marginLeft: 0 }}>已结算</span> : <span className="chip amber" style={{ marginLeft: 0 }}>未结算</span>}</td>
                   <td className="btn-row" style={{ margin: 0 }}>
-                    <button className="task-btn" onClick={() => nav(`/repairs?id=${r.id}`)}>看工单</button>
+                    {!isFin && <button className="task-btn" onClick={() => nav(`/repairs?id=${r.id}`)}>看工单</button>}
                     {r.settled_at && <button className="task-btn" disabled={busy} onClick={() => settle([r.id], false)}>取消结算</button>}
                   </td>
                 </tr>

@@ -8,11 +8,12 @@ export default function Repairs() {
   const { profile } = useAuth()
   const [qp, setQp] = useSearchParams()
   const canSettle = profile?.role === 'admin' || profile?.role === 'finance' || profile?.role === 'ops'
-  const tab = qp.get('tab') === 'settle' && canSettle ? 'settle' : 'list'
+  const isFin = profile?.role === 'finance'   // 财务只看月度结算，不看维修单
+  const tab = (qp.get('tab') === 'settle' || isFin) && canSettle ? 'settle' : 'list'
   return (
     <div>
       <h1>维修</h1>
-      {canSettle && (
+      {canSettle && !isFin && (
         <div className="pills" style={{ marginBottom: 12 }}>
           <button className={tab === 'list' ? 'pill on' : 'pill'} onClick={() => setQp({})}>维修单</button>
           <button className={tab === 'settle' ? 'pill on' : 'pill'} onClick={() => setQp({ tab: 'settle' })}>月度结算</button>
