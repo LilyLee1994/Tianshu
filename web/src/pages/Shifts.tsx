@@ -34,6 +34,7 @@ export default function Shifts() {
   const [reqs, setReqs] = useState<Req[]>([])
   const [mine, setMine] = useState<Plan>({})                            // 我正在编辑的
   const [busy, setBusy] = useState(false)
+  const [saving, setSaving] = useState(false)   // 保存搭档 / 备选时用，不影响“提交并锁定”按钮
   const [msg, setMsg] = useState('')
   const [reason, setReason] = useState('')
 
@@ -72,9 +73,10 @@ export default function Shifts() {
   }
 
   const act = async (body: Record<string, unknown>, ok: string) => {
-    setBusy(true); setMsg('')
+    const isPartner = body.action === 'set_partner'
+    ;(isPartner ? setSaving : setBusy)(true); setMsg('')
     const [, e] = await callApi('shifts', body)
-    setBusy(false)
+    ;(isPartner ? setSaving : setBusy)(false)
     if (e) { setMsg(e); return false }
     setMsg(ok); await load(); return true
   }
@@ -129,14 +131,16 @@ export default function Shifts() {
           {me && (<>
             <div className="btn-row" style={{ alignItems: 'center' }}>
               <span className="small">搭档（你休息时帮你看房源）</span>
-              <select value={me.partner_id ?? ''} disabled={busy} onChange={(e) => act({ action: 'set_partner', user_id: me.id, partner_id: e.target.value, backup_id: me.backup_id }, '已保存。')}>
+              <select value={me.partner_id ?? ''} disabled={saving} onChange={(e) => act({ action: 'set_partner', user_id: me.id, partner_id: e.target.value, backup_id: me.backup_id }, '已保存。')}>
                 <option value="">请选择</option>{team.filter((x) => x.id !== me.id && x.id !== me.backup_id).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
               </select>
               <span className="small">备选（搭档也休息时）</span>
-              <select value={me.backup_id ?? ''} disabled={busy} onChange={(e) => act({ action: 'set_partner', user_id: me.id, partner_id: me.partner_id, backup_id: e.target.value }, '已保存。')}>
+              <select value={me.backup_id ?? ''} disabled={saving} onChange={(e) => act({ action: 'set_partner', user_id: me.id, partner_id: me.partner_id, backup_id: e.target.value }, '已保存。')}>
                 <option value="">不设置</option>{team.filter((x) => x.id !== me.id && x.id !== me.partner_id).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
               </select>
             </div>
+            {saving && <p className="muted small">保存中…</p>}
+            {msg && <p className={msg.startsWith('已') ? 'muted small' : 'err'}>{msg}</p>}
             {!me.partner_id && <p className="warn small">还没选搭档：你休息的那几天，房源会转给管理员。</p>}
           </>)}
           {myCover.length > 0 && (
