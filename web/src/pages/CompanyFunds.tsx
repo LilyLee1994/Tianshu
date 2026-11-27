@@ -21,6 +21,7 @@ interface Row {
   property: { name: string; assistant_id: string | null } | null
 }
 interface Prop { id: number; name: string; assistant_id: string | null }
+interface Resv { id: number; guest_name: string | null; arrival_date: string; departure_date: string; channel_name: string | null; status: string | null; ref: string | null }
 
 export default function CompanyFunds() {
   const { profile } = useAuth()
@@ -154,6 +155,28 @@ export function EditModal({ row, props, isAdmin, onClose, onSaved, defaultProper
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const set = (k: string, v: string | boolean) => setF((x) => ({ ...x, [k]: v }))
+  // 订单下拉：选了房源就列出这套房近 2 个月的订单（最近的排最前），选中后自动带出客人、订单号、入住和退房日期
+  const [resvs, setResvs] = useState<Resv[]>([])
+  const [manual, setManual] = useState(!!row && !!(row.order_ref || row.guest_name))   // 编辑老记录时先显示原来填的，需要换再选
+  useEffect(() => {
+    if (!f.property_id) { setResvs([]); return }
+    const d = (n: number) => { const x = new Date(); x.setDate(x.getDate() + n); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}` }
+    supabase.from('reservations').select('id, guest_name, arrival_date, departure_date, channel_name, status, ref:raw->>channelReservationId')
+      .eq('property_id', Number(f.property_id)).gte('departure_date', d(-60)).lte('arrival_date', d(30))
+      .not('status', 'in', '(declined,expired,inquiry,inquiryPreapproved,inquiryDenied,inquiryTimedout,inquiryNotPossible,ownerStay)')
+      .order('arrival_date', { ascending: false }).limit(100)
+      .then(({ data }) => setResvs((data ?? []) as unknown as Resv[]))
+  }, [f.property_id])
+  const resvOf = (ref: string, guest: string) => String(resvs.find((r) => (r.ref ?? String(r.id)) === ref && (r.guest_name ?? '') === guest)?.id ?? '')
+  const pickResv = (v: string) => {
+    if (v === '__manual') { setManual(true); return }
+    setManual(false)
+    const r = resvs.find((x) => String(x.id) === v)
+    if (!r) { setF((x) => ({ ...x, guest_name: '', order_ref: '', check_in: '', check_out: '' })); return }
+    const ch = (r.channel_name ?? '').toLowerCase()
+    setF((x) => ({ ...x, guest_name: r.guest_name ?? '', order_ref: r.ref ?? String(r.id), check_in: r.arrival_date, check_out: r.departure_date,
+      platform: ch.includes('airbnb') ? 'Airbnb' : ch.includes('booking') ? 'Booking.com' : x.platform }))
+  }
   const save = async () => {
     const n = Number(f.amount)
     if (!f.property_id) { setErr('请选房源。'); return }
@@ -184,8 +207,17 @@ export function EditModal({ row, props, isAdmin, onClose, onSaved, defaultProper
         <div className="form-grid">
           <label>日期<input type="date" value={f.occurred_date} onChange={(e) => set('occurred_date', e.target.value)} /></label>
           <label>平台<select value={f.platform} onChange={(e) => set('platform', e.target.value)}>{PLATFORMS.map((x) => <option key={x}>{x}</option>)}</select></label>
-          <label>客人姓名<input value={f.guest_name} onChange={(e) => set('guest_name', e.target.value)} /></label>
-          <label>订单号<input value={f.order_ref} onChange={(e) => set('order_ref', e.target.value)} /></label>
+          <label style={{ gridColumn: '1 / -1' }}>订单（选填，近 2 个月，最近的在最前）
+            <select value={manual ? '__manual' : resvOf(f.order_ref, f.guest_name)} onChange={(e) => pickResv(e.target.value)} disabled={!f.property_id}>
+              <option value="">{f.property_id ? '不关联订单' : '先选房源'}</option>
+              {resvs.map((r) => <option key={r.id} value={String(r.id)}>{r.guest_name ?? '（无姓名）'} · {r.arrival_date.slice(5)} ~ {r.departure_date.slice(5)} · #{r.ref ?? r.id}{/cancel/i.test(r.status ?? '') ? ' · 已取消' : ''}</option>)}
+              <option value="__manual">订单不在列表里，手动填写…</option>
+            </select>
+          </label>
+          {manual && <>
+            <label>客人姓名<input value={f.guest_name} onChange={(e) => set('guest_name', e.target.value)} /></label>
+            <label>订单号<input value={f.order_ref} onChange={(e) => set('order_ref', e.target.value)} /></label>
+          </>}
           <label>入住日期<input type="date" value={f.check_in} onChange={(e) => set('check_in', e.target.value)} /></label>
           <label>退房日期<input type="date" value={f.check_out} onChange={(e) => set('check_out', e.target.value)} /></label>
           <label>款项类型<select value={f.kind} onChange={(e) => { set('kind', e.target.value); if (e.target.value === '清洁公司费用' && !['额外清洁', '跑腿'].includes(f.category)) set('category', '额外清洁') }}><optgroup label="收入">{KINDS.filter((x) => !OUT_KINDS.includes(x)).map((x) => <option key={x}>{x}</option>)}</optgroup><optgroup label="支出">{OUT_KINDS.map((x) => <option key={x}>{x}</option>)}</optgroup></select></label>
