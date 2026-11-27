@@ -8,6 +8,7 @@ import { HistoryModal } from '../lib/History'
 import HandoverCard from './HandoverCard'
 
 interface Details {
+  self_operated?: boolean
   bedrooms: number | null; bathrooms: number | null; max_guests: number | null; beds: string | null; appliances: string[]
   lock_location: string | null; lock_code: string | null; wifi_name: string | null; wifi_password: string | null
   parking: string | null; bin_day: string | null; notes: string | null; guidebook_url?: string | null; stra_number?: string | null
@@ -351,6 +352,7 @@ function Detail({ row: r, canEdit, isAdmin, onEdit, onChanged }: { row: Row; can
       <dl>
         <dt>地址</dt><dd>{dash(r.address)}</dd>
         <dt>区域</dt><dd>{dash(r.region)}</dd>
+        <dt>运营模式</dt><dd>{d?.self_operated ? <span className="chip amber" style={{ marginLeft: 0 }}>自营（公司租下来运营）</span> : '房东托管'}</dd>
         <dt>主责助理</dt><dd>{dash(r.assistant?.name)}</dd>
         <dt>清洁由谁做</dt><dd>{r.cleaning_by === '房东自己' ? '房东自己' : 'Alisa'}</dd>
         <dt>户型</dt><dd>{dash(d?.bedrooms)} 房 {dash(d?.bathrooms)} 卫 · 可住 {dash(d?.max_guests)} 人</dd>
@@ -388,6 +390,7 @@ function EditForm({ row, isAdmin, assistants, onCancel, onSaved }: { row: Row; i
     bedrooms: d?.bedrooms?.toString() ?? '', bathrooms: d?.bathrooms?.toString() ?? '', max_guests: d?.max_guests?.toString() ?? '',
     beds: d?.beds ?? '', appliances: (d?.appliances ?? []).join('，'),
     lock_location: d?.lock_location ?? '', lock_code: d?.lock_code ?? '', wifi_name: d?.wifi_name ?? '', wifi_password: d?.wifi_password ?? '',
+    self_operated: d?.self_operated ?? false,
     parking: d?.parking ?? '', bin_day: d?.bin_day ?? '', notes: d?.notes ?? '', guidebook_url: d?.guidebook_url ?? '', stra_number: d?.stra_number ?? '',
   })
   const [ct, setCt] = useState({
@@ -408,6 +411,7 @@ function EditForm({ row, isAdmin, assistants, onCancel, onSaved }: { row: Row; i
         appliances: dt.appliances.split(/[,，、]/).map((x) => x.trim()).filter(Boolean),
         lock_location: txt(dt.lock_location), lock_code: txt(dt.lock_code), wifi_name: txt(dt.wifi_name), wifi_password: txt(dt.wifi_password),
         parking: txt(dt.parking), bin_day: txt(dt.bin_day), notes: txt(dt.notes), guidebook_url: txt(dt.guidebook_url), stra_number: txt(dt.stra_number),
+        ...(dt.self_operated !== (d?.self_operated ?? false) ? { self_operated: dt.self_operated } : {}),
       }).eq('property_id', row.id).select('property_id'),
     ]
     if (!row.legacy) jobs.push(supabase.from('property_contracts').update({ ...ct, end_date: ct.end_date || null }).eq('property_id', row.id).select('property_id'))
@@ -436,6 +440,7 @@ function EditForm({ row, isAdmin, assistants, onCancel, onSaved }: { row: Row; i
           {f('房源名称', p.name, (v) => setP({ ...p, name: v }))}
           {f('地址', p.address, (v) => setP({ ...p, address: v }))}
           {f('区域', p.region, (v) => setP({ ...p, region: v }))}
+          <label>运营模式<select value={dt.self_operated ? '自营' : '托管'} onChange={(e) => setDt({ ...dt, self_operated: e.target.value === '自营' })}><option value="托管">房东托管</option><option value="自营">自营（公司租下来运营）</option></select></label>
           {sel('清洁由谁做（房东自己做的，不自动派清洁单）', p.cleaning_by, ['清洁公司', '房东自己'], (v) => setP({ ...p, cleaning_by: v }))}
           {f('佣金比例（%，房东结算用）', p.commission, (v) => setP({ ...p, commission: v }))}
           {f('Airbnb 房源链接', p.airbnb_url, (v) => setP({ ...p, airbnb_url: v }))}
