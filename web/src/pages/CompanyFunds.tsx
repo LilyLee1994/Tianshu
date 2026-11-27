@@ -87,7 +87,7 @@ export default function CompanyFunds() {
   return (
     <div>
       <div className="title-row"><h1>公司款项</h1><button onClick={() => setEdit('new')}>+ 新增款项</button></div>
-      <p className="muted small">记录每一笔和订单相关的收款、退款、押金、线下转账。支出类型有：退款、协商退款、清洁问题退款、退押金、线下转出、平台扣款、赔付房东、垫付费用，金额都填正数，系统自动记成支出。“对房东结算”选“补房东”或“扣房东”的，会自动计入当月房东结算（选“无”表示公司自己消化，或已在 Hostaway 订单里改好）。</p>
+      <p className="muted small">记录每一笔和订单相关的收款、退款、押金、线下转账。支出类型有：退款、协商退款、清洁问题退款、退押金、线下转出、平台扣款、赔付房东、垫付费用，金额都填正数，系统自动记成支出。“对房东结算”选“补房东”或“扣房东”的，会自动计入当月房东结算（选“无”表示公司自己消化，或已在 Hostaway 订单里改好）。索赔到账的钱，只有公司留下的部分会记在这里，给房东的部分不记。</p>
       <div className="btn-row" style={{ marginBottom: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         <span className="muted small">日期</span>
         <input type="date" value={from} onChange={(e) => { setFrom(e.target.value); if (to && to < e.target.value) setTo(e.target.value) }} />
