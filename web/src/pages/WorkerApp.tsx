@@ -5,9 +5,9 @@ import { uploadPhotos } from '../lib/photos'
 import { chipOf } from '../lib/ui'
 import { supabase } from '../lib/supabase'
 
-interface Item { id: number; type: string; description: string | null; status: string; urgent: boolean; planned_date: string | null; property: { name: string } | null }
+interface Item { id: number; urgent_label?: string | null; type: string; description: string | null; status: string; urgent: boolean; planned_date: string | null; property: { name: string } | null }
 interface Detail {
-  order: { id: number; type: string; description: string | null; status: string; urgent: boolean; planned_date: string | null; damage_report: string | null }
+  order: { id: number; type: string; description: string | null; status: string; urgent: boolean; planned_date: string | null; damage_report: string | null; urgent_text?: string | null }
   property: { name: string; address: string | null }
   access: { lock_location: string | null; lock_code: string | null; notes: string | null } | null
   accessHidden: boolean
@@ -45,12 +45,13 @@ export default function WorkerApp() {
       {(() => {
         const list = (
           <>
+            {!loading && items.length > 0 && <p className="muted small" style={{ margin: 0 }}>排序：紧急的在最前（红色，写明了为什么紧急），其余按退房日从早到晚；已完成的放最后。</p>}
             {loading && <p className="muted">加载中…</p>}
             {!loading && !items.length && <p className="muted pad">这里没有任务。助理派单后会出现在这里。</p>}
             {[...items].sort((a, b) => Number(a.status === '已完成') - Number(b.status === '已完成') || Number(b.urgent) - Number(a.urgent) || (a.planned_date ?? '9999').localeCompare(b.planned_date ?? '9999')).map((o) => (
             <button key={o.id} className={`${o.urgent && o.status !== '已完成' ? 'mcard urgent' : 'mcard'}${wide && open === o.id ? ' on' : ''}`} onClick={() => setOpen(o.id)}>
               <div className="mcard-top">
-                <span className="mcard-name"><b>{o.property?.name}</b>{o.urgent && o.status !== '已完成' && <span className="chip amber">紧急</span>}</span>
+                <span className="mcard-name"><b>{o.property?.name}</b>{o.urgent && o.status !== '已完成' && <span className="chip amber">紧急{o.urgent_label ? ` · ${o.urgent_label}` : ''}</span>}</span>
                 {o.status !== '已派单' && <span className={chipOf(o.status)} style={{ marginLeft: 0 }}>{o.status}</span>}
               </div>
               <div className="mcard-desc">{o.type} · {o.description ?? ''}</div>
@@ -116,7 +117,7 @@ function OrderView({ id, isClean, onBack, onChanged, wide }: { id: number; isCle
         <h2>{d.property.name} {d.order.urgent && <span className="chip amber">紧急</span>}</h2>
         <p>{d.order.type} · {d.order.description}</p>
         <span className={chipOf(st)} style={{ marginLeft: 0 }}>{st}</span>
-        {isClean && d.order.urgent && <p className="warn">请优先安排，务必在入住前完成。进门发现损坏要马上上报，不要等到清洁结束。</p>}
+        {d.order.urgent && st !== '已完成' && <p className="warn">{d.order.urgent_text ?? '紧急：请优先安排。'}{isClean && ' 进门发现损坏要马上上报，不要等到清洁结束。'}</p>}
         {d.property.address && <p><b>地址：</b>{d.property.address}</p>}
         {d.access && <p><b>锁盒：</b>{d.access.lock_location ?? '—'} / {d.access.lock_code ?? '—'}<br /><b>备注：</b>{d.access.notes ?? '—'}</p>}
         {d.accessHidden && !isClean && st === '已派单' && <p className="muted small">接单后才显示详细地址和进门方式，完成后自动隐藏。</p>}
