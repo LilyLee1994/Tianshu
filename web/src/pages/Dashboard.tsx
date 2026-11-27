@@ -16,7 +16,7 @@ type Lv = 'red' | 'orange' | 'yellow' | 'blue'
 interface Todo { tag: string; text: string; to: string; cls: string; lv: Lv }
 const LV: { k: Lv; label: string; hint: string }[] = [
   { k: 'red', label: '紧急', hint: '差评、订单异常、待派单、合同 7 天内到期、优先级高的待办' },
-  { k: 'orange', label: '尽快', hint: '索赔待提交、确认费用、通知房东、合同 30 天内到期、已过期的待办' },
+  { k: 'orange', label: '尽快', hint: '索赔待提交、确认费用、通知房东、明天入住但清洁没完成、合同 30 天内到期、已过期的待办' },
   { k: 'yellow', label: '留意', hint: '确认完成、合同信息没填完、排班变更申请、合同 60 天内到期、优先级中的待办' },
   { k: 'blue', label: '日常', hint: '排班填写提醒、优先级低的待办' },
 ]
@@ -135,6 +135,24 @@ export default function Dashboard() {
         else if (x.status === '待通知房东') t.push({ tag: '通知房东', text: label, to: `${x.type === '维修' ? '/repairs' : '/orders'}?id=${x.id}`, cls: 'amber', lv: 'orange' })
         else if (x.status === '房东已完成') t.push({ tag: '确认', text: `${label}，房东说已完成，请确认`, to: `${x.type === '维修' ? '/repairs' : '/orders'}?id=${x.id}`, cls: 'purple', lv: 'yellow' })
         else doing++
+      }
+      // 明天有客人入住，今天（或更早）的清洁单还没完成 → 助理联系清洁公司
+      {
+        const sydToday = new Date().toLocaleDateString('en-CA', { timeZone: 'Australia/Sydney' })
+        const tmr = new Date(`${sydToday}T00:00:00Z`); tmr.setUTCDate(tmr.getUTCDate() + 1)
+        const tomorrow = tmr.toISOString().slice(0, 10)
+        const [cw, rs] = await Promise.all([
+          supabase.from('work_orders').select('id, property_id, planned_date, status, urgent, property:properties(name, assistant_id)').eq('type', '清洁').not('status', 'in', '(已完成,已取消)'),
+          supabase.from('reservations').select('property_id').eq('arrival_date', tomorrow).not('property_id', 'is', null)
+            .not('status', 'in', '(cancelled,declined,expired,inquiry,inquiryPreapproved,inquiryDenied,inquiryTimedout,inquiryNotPossible,ownerStay)'),
+        ])
+        const arrive = new Set((rs.data ?? []).map((r) => r.property_id as number))
+        for (const x of (cw.data ?? []) as unknown as { id: number; property_id: number; planned_date: string | null; status: string; urgent: boolean; property: { name: string; assistant_id: string | null } }[]) {
+          if (!mine(x.property?.assistant_id)) continue
+          const due = !x.planned_date || x.planned_date <= sydToday
+          if (due && (x.urgent || arrive.has(x.property_id)))
+            t.push({ tag: '清洁未完成', text: `${tagOf(x.property?.assistant_id)}${x.property?.name} · 明天有客人入住，${x.planned_date && x.planned_date < sydToday ? `${x.planned_date.slice(5)} 的` : '今天的'}清洁还没完成（${x.status}），请联系清洁公司`, to: `/orders?id=${x.id}`, cls: 'amber', lv: 'orange' })
+        }
       }
       let incomplete = 0
       const readySet = new Set<number>()   // 已经出了「可上线」便签的房源
