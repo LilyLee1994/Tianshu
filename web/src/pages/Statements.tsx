@@ -17,7 +17,6 @@ const chip = (s: string) => (s === '已付' ? 'chip green' : s === '已确认' ?
 export default function Statements() {
   const { profile } = useAuth()
   const canEdit = profile?.role === 'admin' || profile?.role === 'finance'
-  const isAssistant = profile?.role === 'assistant'
   const [month, setMonth] = useState(lastMonth())
   const [rows, setRows] = useState<St[]>([])
   const [q, setQ] = useState('')
@@ -36,9 +35,8 @@ export default function Statements() {
 
   const shown = useMemo(() => rows.filter((r) => {
     if (q && !r.property?.name.toLowerCase().includes(q.toLowerCase())) return false
-    if (isAssistant && (r.property as never as { assistant_id: string | null })?.assistant_id !== profile?.id) return false
     return true
-  }), [rows, q, isAssistant, profile])
+  }), [rows, q])
 
   const total = useMemo(() => shown.reduce((a, r) => ({
     rental: a.rental + Number(r.rental_income), comm: a.comm + Number(r.commission), plat: a.plat + Number(r.platform_fee), gst: a.gst + Number(r.gst),
