@@ -9,7 +9,7 @@ interface Order {
   id: number; property_id: number; type: OType; executor: string | null; description: string | null
   assigned_to: string | null; vendor_name: string | null; planned_date: string | null; done_date: string | null
   status: string; amount: number | null; payer: string; owner_notified: boolean; urgent: boolean; created_at: string
-  photos: string[]; damage_photos: string[]; damage_report: string | null; damage_handled?: boolean; property_id?: number
+  photos: string[]; damage_photos: string[]; damage_report: string | null; damage_handled?: boolean
   property: { name: string } | null; worker: { name: string } | null
 }
 interface Worker { id: string; name: string; role: string }
