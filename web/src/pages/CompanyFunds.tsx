@@ -65,6 +65,7 @@ export default function CompanyFunds() {
     if (ap.q && !`${r.property?.name} ${r.guest_name ?? ''} ${r.order_ref ?? ''} ${r.reason ?? ''}`.toLowerCase().includes(ap.q.toLowerCase())) return false
     return true
   }), [rows, isAssistant, cover, ap])
+  const visible = rows.filter((r) => !isAssistant || (r.property?.assistant_id && cover.has(r.property.assistant_id))).length
   const inn = shown.filter((r) => r.amount > 0).reduce((n, r) => n + Number(r.amount), 0)
   const out = shown.filter((r) => r.amount < 0).reduce((n, r) => n - Number(r.amount), 0)
   const todo = shown.filter((r) => !r.reconciled).length
@@ -123,7 +124,7 @@ export default function CompanyFunds() {
             </tr>
           ))}</tbody>
         </table>
-        {!shown.length && <p className="muted pad">还没有款项记录。</p>}
+        {!shown.length && <p className="muted pad">{visible ? `没有符合当前条件的记录（你能看到的一共 ${visible} 条）。点“重置”可以清空条件。` : '系统里还没有任何款项记录，点右上角“+ 新增款项”开始记。'}</p>}
       </div>
       {edit && <EditModal row={edit === 'new' ? null : edit} props={myProps} isAdmin={isAdmin} onClose={() => setEdit(null)} onSaved={(t) => { setEdit(null); setMsg(''); void t; load() }} />}
     </div>
