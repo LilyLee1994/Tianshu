@@ -59,8 +59,8 @@ export default function Dashboard() {
       // 清洁上报损坏：没点“已处理”之前一直提醒负责这套房的助理
       let dmRows = dm.data
       if (dm.error) { const r = await supabase.from('work_orders').select('id, damage_report, property:properties(name, assistant_id)').not('damage_report', 'is', null).neq('status', '已取消'); dmRows = r.data }  // 还没运行 048 时，不过滤“已处理”
-      for (const x of (dmRows ?? []) as unknown as { damage_report: string; property: { name: string; assistant_id: string | null } | null }[]) {
-        if (mine(x.property?.assistant_id ?? null)) t.push({ tag: '清洁上报损坏', text: `${tagOf(x.property?.assistant_id ?? null)}${x.property?.name} · ${x.damage_report}`, to: '/orders', cls: 'amber', lv: 'red' })
+      for (const x of (dmRows ?? []) as unknown as { id: number; damage_report: string; property: { name: string; assistant_id: string | null } | null }[]) {
+        if (mine(x.property?.assistant_id ?? null)) t.push({ tag: '清洁上报损坏', text: `${tagOf(x.property?.assistant_id ?? null)}${x.property?.name} · ${x.damage_report}`, to: `/orders?id=${x.id}`, cls: 'amber', lv: 'red' })
       }
       // 新房源上线流程：
       // 1) 管理员：每套还没走完的房源一张便签，写明进度和下一步

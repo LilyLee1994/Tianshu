@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { chipOf, money, today } from '../lib/ui'
@@ -32,6 +32,8 @@ export default function Orders() {
   const [msg, setMsg] = useState('')
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(true)
+  const [qp] = useSearchParams()
+  const focusId = Number(qp.get('id')) || null
 
   const load = useCallback(async () => {
     const [o, w, p] = await Promise.all([
@@ -53,7 +55,12 @@ export default function Orders() {
     setMsg(ok); load()
   }
 
-  const list = rows.filter((r) => filter === '全部' || r.type === filter)
+  const list = rows.filter((r) => filter === '全部' || r.type === filter || r.id === focusId)
+  // 从总览点进来：滚到这张工单并高亮
+  useEffect(() => {
+    if (!focusId || loading) return
+    document.getElementById(`wo-${focusId}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }, [focusId, loading, rows.length])
   if (loading) return <p className="muted">加载中…</p>
 
   return (
@@ -66,7 +73,7 @@ export default function Orders() {
         <table style={{ minWidth: 980 }}>
           <thead><tr><th>日期</th><th>房源</th><th>类型</th><th>内容</th><th>执行</th><th>状态</th><th>费用</th><th>操作</th></tr></thead>
           <tbody>
-            {list.map((o) => <OrderRow key={o.id} o={o} workers={workers} onUpdate={update} />)}
+            {list.map((o) => <OrderRow key={o.id} o={o} workers={workers} onUpdate={update} focus={o.id === focusId} />)}
           </tbody>
         </table>
         {!list.length && <p className="muted pad">还没有工单。</p>}
@@ -76,7 +83,7 @@ export default function Orders() {
   )
 }
 
-function OrderRow({ o, workers, onUpdate }: { o: Order; workers: Worker[]; onUpdate: (id: number, patch: Record<string, unknown>, ok: string) => void }) {
+function OrderRow({ o, workers, onUpdate, focus }: { o: Order; workers: Worker[]; focus?: boolean; onUpdate: (id: number, patch: Record<string, unknown>, ok: string) => void }) {
   const flow = flowOf(o.type, o.executor)
   const idx = flow.indexOf(o.status)
   const next = idx >= 0 && idx < flow.length - 1 ? flow[idx + 1] : ''
@@ -117,7 +124,7 @@ function OrderRow({ o, workers, onUpdate }: { o: Order; workers: Worker[]; onUpd
   }
 
   return (
-    <tr>
+    <tr id={`wo-${o.id}`} className={focus ? 'focus-row' : undefined}>
       <td>{o.created_at.slice(5, 10).replace('-', '/')}</td>
       <td><b>{o.property?.name}</b>{o.urgent && <span className="chip amber">次日入住</span>}</td>
       <td>{o.type}</td><td>{o.description ?? '—'}{o.damage_report && (o.damage_handled
