@@ -16,6 +16,13 @@ const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart
 const monthRange = (offset: number) => { const n = new Date(); return [ymd(new Date(n.getFullYear(), n.getMonth() + offset, 1)), ymd(new Date(n.getFullYear(), n.getMonth() + offset + 1, 0))] as const }
 const chip = (s: string) => (s === '已付' ? 'chip green' : s === '已确认' ? 'chip blue' : 'chip amber')
 
+// 加给房东的显示绿色 +，从房东扣的显示红色 −，0 显示 —
+const amt = (n: number) => {
+  if (!n || Number.isNaN(n)) return <span className="muted">—</span>
+  const t = `$${Math.abs(n).toFixed(2).replace(/\.00$/, '')}`
+  return n > 0 ? <span style={{ color: '#0f7a4a' }}>+{t}</span> : <span style={{ color: '#c0392b' }}>−{t}</span>
+}
+
 export default function Statements() {
   const { profile } = useAuth()
   const canEdit = profile?.role === 'admin' || profile?.role === 'finance'
@@ -66,7 +73,7 @@ export default function Statements() {
   }
 
   const exportCsv = () => {
-    const head = ['期间', '房源', '助理', '订单数', '晚数', '房费', '佣金比例', '佣金', '平台费', 'GST', '房东承担维修', '差评赔偿', '索赔到账', '公司款项', '调整', '调整说明', '应付房东', '状态']
+    const head = ['期间', '房源', '助理', '订单数', '晚数', '房费', '佣金比例', '佣金', '平台费', 'GST', '房东承担维修', '差评赔偿', '索赔到账', '其他补扣', '手工调整', '调整说明', '应付房东', '状态']
     const lines = shown.map((r) => [`${r.period_start}~${r.period_end}`, r.property?.name, r.property?.assistant?.name ?? '', r.reservations, r.nights, r.rental_income, r.commission_rate, r.commission, r.platform_fee, r.gst, r.owner_costs, r.review_comp, r.claims_in, r.ledger_adj ?? 0, r.adjustment, r.adjustment_note ?? '', r.payable, r.status]
       .map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))
     const url = URL.createObjectURL(new Blob(['﻿' + [head.join(','), ...lines].join('\n')], { type: 'text/csv;charset=utf-8' }))
@@ -76,7 +83,7 @@ export default function Statements() {
   return (
     <div>
       <h1>房东结算</h1>
-      <p className="muted small">应付房东 = 房费（不含清洁费，按退房日算在哪个日期范围）先扣平台费 16.5%，再在剩下的金额上扣佣金（比例 × 1.1，默认 15% → 16.5%）；再 + 当月到账的索赔、± 手工调整、− 房东承担的维修费和差评赔偿。平台费和佣金已含 GST，“其中 GST”仅供对账。确认后不能再改。</p>
+      <p className="muted small">应付房东 = 房费（不含清洁费，按退房日算在哪个日期范围）先扣平台费 16.5%，再在剩下的金额上扣佣金（比例 × 1.1，默认 15% → 16.5%）；再 + 这段时间到账、给房东的索赔，− 房东承担的维修费和差评赔偿，± “其他补扣”（公司款项里标为补房东 / 扣房东的）和手工调整。表里绿色 + 号是加给房东，红色 − 号是从房东扣。平台费和佣金已含 GST，“其中 GST”仅供对账。确认后不能再改。</p>
       <div className="btn-row" style={{ marginBottom: 12 }}>
         <input type="date" value={dFrom} onChange={(e) => { setDFrom(e.target.value); if (dTo < e.target.value) setDTo(e.target.value) }} title="开始日期（含当天）" />
         <span className="muted small">到</span>
@@ -92,7 +99,7 @@ export default function Statements() {
 
       <div className="table-wrap">
         <table style={{ minWidth: 1260 }}>
-          <thead><tr><th>房源</th><th>助理</th><th>订单/晚</th><th>房费</th><th>佣金</th><th>平台费</th><th>其中 GST</th><th>维修扣款</th><th>差评赔偿</th><th>索赔到账</th><th>公司款项</th><th>调整</th><th>应付房东</th><th>状态</th>{canEdit && <th></th>}</tr></thead>
+          <thead><tr><th>房源</th><th>助理</th><th>订单/晚</th><th>房费</th><th>佣金</th><th>平台费</th><th>其中 GST</th><th title="房东承担的维修费，从应付里扣">维修扣款</th><th title="给客人的差评赔偿，从应付里扣">差评赔偿</th><th title="这段时间到账的索赔，给房东的部分，加到应付里">索赔到账</th><th title="公司款项里标为“补房东 / 扣房东”的金额合计">其他补扣</th><th title="财务手工调整">手工调整</th><th>应付房东</th><th>状态</th>{canEdit && <th></th>}</tr></thead>
           <tbody>
             {shown.map((r) => (
               <tr key={r.id}>
@@ -100,9 +107,9 @@ export default function Statements() {
                 <td>{r.reservations} / {r.nights}</td>
                 <td>{money(r.rental_income)}</td>
                 <td>{money(r.commission)} <span className="muted small">{Math.round(Number(r.commission_rate) * 1000) / 10}%</span></td>
-                <td>{money(r.platform_fee)}</td><td>{money(r.gst)}</td><td>{money(r.owner_costs)}</td><td>{Number(r.review_comp) ? money(r.review_comp) : '—'}</td><td>{Number(r.claims_in) ? money(r.claims_in) : '—'}</td>
-                <td>{Number(r.ledger_adj) ? money(r.ledger_adj) : '—'}</td>
-                <td title={r.adjustment_note ?? ''}>{Number(r.adjustment) ? money(r.adjustment) : '—'}</td>
+                <td>{money(r.platform_fee)}</td><td>{money(r.gst)}</td><td>{amt(-Number(r.owner_costs))}</td><td>{amt(-Number(r.review_comp))}</td><td>{amt(Number(r.claims_in))}</td>
+                <td>{amt(Number(r.ledger_adj))}</td>
+                <td title={r.adjustment_note ?? ''}>{amt(Number(r.adjustment))}</td>
                 <td><b>{money(r.payable)}</b></td>
                 <td><span className={chip(r.status)}>{r.status}</span></td>
                 {canEdit && <td className="btn-row" style={{ margin: 0 }}>
