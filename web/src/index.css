@@ -229,3 +229,22 @@ button.is-pending::before { content: ''; display: inline-block; width: 12px; hei
 .tip-row.tip-sum { font-weight: 600; }
 
 .task-btn { white-space: nowrap; }
+
+/* 日期范围选择 */
+.dr { position: relative; display: inline-block; }
+.dr-btn { min-height: 40px; padding: 0 14px; display: inline-flex; align-items: center; gap: 8px; border: 1px solid #cfd6dd; border-radius: 8px; background: #fff; color: #1b2430; font-size: 14px; white-space: nowrap; }
+.dr-pop { width: max-content; max-width: calc(100vw - 48px); position: absolute; z-index: 70; top: calc(100% + 6px); left: 0; background: #fff; border: 1px solid #e1e5ea; border-radius: 12px; box-shadow: 0 10px 32px rgba(20,30,40,.18); padding: 12px 14px 14px; }
+.dr-presets { display: flex; gap: 6px; flex-wrap: wrap; padding-bottom: 10px; border-bottom: 1px solid #eef1f4; }
+.dr-presets button { min-height: 28px; padding: 0 10px; border-radius: 14px; border: 1px solid #cfd6dd; background: #fff; color: #3a4a48; font-size: 12px; white-space: nowrap; }
+.dr-presets button:hover { background: #eef3f2; }
+.dr-nav { display: flex; align-items: center; justify-content: space-between; margin: 10px 0 4px; }
+.dr-nav button { width: 30px; min-height: 30px; padding: 0; border-radius: 50%; border: 1px solid #cfd6dd; background: #fff; color: #3a4a48; font-size: 16px; }
+.dr-months { display: flex; gap: 20px; flex-wrap: wrap; }
+.dr-title { text-align: center; font-weight: 600; margin: 4px 0 6px; }
+.dr-grid { display: grid; grid-template-columns: repeat(7, 36px); row-gap: 2px; }
+.dr-wk { text-align: center; font-size: 12px; color: #7b8794; line-height: 28px; }
+.dr-day { width: 36px; height: 34px; min-height: 0; padding: 0; border: 0; border-radius: 0; background: transparent; color: #1b2430; font-size: 13px; }
+.dr-day:hover { background: #e3efee; }
+.dr-day.mid { background: #e3efee; }
+.dr-day.edge { background: #0f6b66; color: #fff; border-radius: 8px; }
+.dr-day.today { font-weight: 700; text-decoration: underline; }
