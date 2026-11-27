@@ -20,12 +20,20 @@ export default async function handler(req: Req, res: Res) {
       const { data: d } = await db.from('property_details').select('lock_location, lock_code, notes').eq('property_id', o.property_id).maybeSingle()
       access = d ?? null
     }
+    // 清洁公司：派单后到完成前，能看到对应订单的备注（订单备注 / 客人留言 / 房东备注），方便提前知道有没有特殊情况
+    let notes: { label: string; text: string }[] = []
+    if (me.role === 'cleaner' && o.status === '已派单' && o.reservation_id) {
+      const { data: r } = await db.from('reservations').select('c:raw->>comment, g:raw->>guestNote, h:raw->>hostNote').eq('id', o.reservation_id).maybeSingle()
+      const x = r as unknown as { c: string | null; g: string | null; h: string | null } | null
+      notes = ([['订单备注', x?.c], ['客人留言', x?.g], ['房东备注', x?.h]] as [string, string | null | undefined][]).filter(([, v]) => v && v.trim()).map(([label, v]) => ({ label, text: String(v).trim().slice(0, 500) }))
+    }
     const why = o.status === '已完成' ? {} : await urgencyOf(db, [o as never])
     const p = o.property as unknown as { name: string; address: string | null } | null
     return res.status(200).json({
       order: { id: o.id, type: o.type, description: o.description, status: o.status, urgent: o.urgent, planned_date: o.planned_date, damage_report: o.damage_report, urgent_text: why[o.id]?.text ?? null },
       property: { name: p?.name, address: showAccess ? p?.address : null },
       access,
+      notes,
       accessHidden: !showAccess,
     })
   } catch (e) {

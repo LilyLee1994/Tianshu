@@ -12,10 +12,11 @@ type OType = '清洁' | '维修' | '除草' | '除虫'
 interface Order {
   id: number; property_id: number; type: OType; executor: string | null; description: string | null
   assigned_to: string | null; vendor_name: string | null; planned_date: string | null; done_date: string | null
-  status: string; amount: number | null; payer: string; owner_notified: boolean; urgent: boolean; created_at: string
+  reservation_id?: number | null; status: string; amount: number | null; payer: string; owner_notified: boolean; urgent: boolean; created_at: string
   photos: string[]; damage_photos: string[]; damage_report: string | null; damage_handled?: boolean; settled_at?: string | null; owner_charge?: number | null; remark?: string | null
   property: { name: string; assistant_id: string | null } | null; worker: { name: string } | null
 }
+export interface ResvNotes { c: string | null; g: string | null; h: string | null }
 interface Worker { id: string; name: string; role: string }
 interface Prop { id: number; name: string; assistant_id: string | null }
 
@@ -38,6 +39,7 @@ export default function Orders({ scope = 'other' }: { scope?: 'repair' | 'other'
   const mineAid = (aid: string | null | undefined) => !isAssistant || (!!aid && cover.has(aid))
   const [rows, setRows] = useState<Order[]>([])
   const [workers, setWorkers] = useState<Worker[]>([])
+  const [notes, setNotes] = useState<Record<number, ResvNotes>>({})
   const [props, setProps] = useState<Prop[]>([])
   const [filter, setFilter] = useState('全部')
   const [adding, setAdding] = useState(false)
@@ -54,7 +56,18 @@ export default function Orders({ scope = 'other' }: { scope?: 'repair' | 'other'
       supabase.from('profiles').select('id, name, role').in('role', ['repairman', 'cleaner']).eq('active', true),
       supabase.from('properties').select('id, name, assistant_id').order('name'),
     ])
-    if (o.error) setErr(o.error.message); else setRows(o.data as unknown as Order[])
+    if (o.error) setErr(o.error.message); else {
+      const list = o.data as unknown as Order[]
+      setRows(list)
+      // 清洁单对应订单的备注（订单备注 / 客人留言 / 房东备注），只取还没完成的清洁单，分批查
+      const rids = [...new Set(list.filter((x) => x.type === '清洁' && x.reservation_id && !['已完成', '已取消'].includes(x.status)).map((x) => Number(x.reservation_id)))]
+      const m: Record<number, ResvNotes> = {}
+      for (let i = 0; i < rids.length; i += 80) {
+        const { data: rs } = await supabase.from('reservations').select('id, c:raw->>comment, g:raw->>guestNote, h:raw->>hostNote').in('id', rids.slice(i, i + 80))
+        ;(rs ?? []).forEach((r) => { const x = r as unknown as { id: number } & ResvNotes; m[x.id] = { c: x.c?.trim() || null, g: x.g?.trim() || null, h: x.h?.trim() || null } })
+      }
+      setNotes(m)
+    }
     if (w.data) setWorkers(w.data as Worker[])
     if (p.data) setProps(p.data as Prop[])
     setLoading(false)
@@ -104,7 +117,7 @@ export default function Orders({ scope = 'other' }: { scope?: 'repair' | 'other'
         <table style={{ minWidth: 980 }}>
           <thead><tr><th>日期</th><th>房源</th>{!isRepair && <th>类型</th>}<th>内容</th><th>{isRepair ? '师傅' : '执行'}</th><th>状态</th><th>费用</th><th>操作</th></tr></thead>
           <tbody>
-            {list.map((o) => <OrderRow key={o.id} o={o} workers={workers} onUpdate={update} onRemove={remove} focus={o.id === focusId} hideType={isRepair} />)}
+            {list.map((o) => <OrderRow key={o.id} o={o} workers={workers} notes={o.reservation_id ? notes[Number(o.reservation_id)] : undefined} onUpdate={update} onRemove={remove} focus={o.id === focusId} hideType={isRepair} />)}
           </tbody>
         </table>
         {!list.length && <p className="muted pad">{isRepair ? '没有符合条件的维修单。' : '还没有工单。'}</p>}
@@ -115,7 +128,7 @@ export default function Orders({ scope = 'other' }: { scope?: 'repair' | 'other'
   )
 }
 
-function OrderRow({ o, workers, onUpdate, onRemove, focus, hideType }: { o: Order; workers: Worker[]; focus?: boolean; hideType?: boolean; onUpdate: (id: number, patch: Record<string, unknown>, ok: string) => void; onRemove: (o: Order) => void }) {
+function OrderRow({ o, workers, notes, onUpdate, onRemove, focus, hideType }: { o: Order; notes?: ResvNotes; workers: Worker[]; focus?: boolean; hideType?: boolean; onUpdate: (id: number, patch: Record<string, unknown>, ok: string) => void; onRemove: (o: Order) => void }) {
   const [editing, setEditing] = useState(false)
   const flow = flowOf(o.type, o.executor)
   const idx = flow.indexOf(o.status)
@@ -162,7 +175,7 @@ function OrderRow({ o, workers, onUpdate, onRemove, focus, hideType }: { o: Orde
     <tr id={`wo-${o.id}`} className={focus ? 'focus-row' : undefined}>
       <td>{o.created_at.slice(5, 10).replace('-', '/')}</td>
       <td><b>{o.property?.name}</b>{o.urgent && <span className="chip amber">次日入住</span>}</td>
-      {!hideType && <td>{o.type}</td>}<td>{cleanDesc(o.description) || '—'}{o.remark && <div className="muted small">备注：{o.remark}</div>}{o.damage_report && <div className="muted small">清洁上报损坏：{o.damage_report} <button className="task-btn" onClick={() => nav(`/claims?property=${o.property_id}`)}>已转入索赔，去查看</button></div>}</td><td>{who}</td>
+      {!hideType && <td>{o.type}</td>}<td>{cleanDesc(o.description) || '—'}{o.remark && <div className="muted small">备注：{o.remark}</div>}{notes && <ResvNoteBox n={notes} />}{o.damage_report && <div className="muted small">清洁上报损坏：{o.damage_report} <button className="task-btn" onClick={() => nav(`/claims?property=${o.property_id}`)}>已转入索赔，去查看</button></div>}</td><td>{who}</td>
       <td><span className={chipOf(o.status)}>{o.status}</span></td>
       <td>{o.type === '清洁' ? '—' : o.type === '维修' && o.payer === '房东' && o.owner_charge != null && Number(o.owner_charge) !== Number(o.amount) ? <>成本 {money(o.amount)}<div className="muted small">收房东 {money(o.owner_charge)}（赚 {money(Number(o.owner_charge) - Number(o.amount ?? 0))}）</div></> : `${money(o.amount)}（${o.payer}）`}{o.type === '维修' && o.status === '已完成' && <div>{o.settled_at ? <span className="chip green" style={{ marginLeft: 0 }}>已和师傅结算</span> : <span className="muted small">未和师傅结算</span>}</div>}</td>
       <td>{action}
@@ -284,6 +297,20 @@ function DispatchCleaning({ orders, cleaners, onClose, onDone }: { orders: Order
           <button className="ghost" onClick={onClose}>取消</button>
         </div>
       </div>
+    </div>
+  )
+}
+
+// 清洁单对应订单的备注：默认只显示前 60 个字，点“展开”看全文
+function ResvNoteBox({ n }: { n: ResvNotes }) {
+  const [open, setOpen] = useState(false)
+  const items = [['订单备注', n.c], ['客人留言', n.g], ['房东备注', n.h]].filter(([, v]) => v) as [string, string][]
+  if (!items.length) return null
+  const long = items.some(([, v]) => v.length > 60)
+  return (
+    <div className="small" style={{ marginTop: 4, padding: '4px 8px', background: '#fff8e6', borderRadius: 6, maxWidth: 360 }}>
+      {items.map(([k, v]) => <div key={k} style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}><b>{k}：</b>{open || v.length <= 60 ? v : `${v.slice(0, 60)}…`}</div>)}
+      {long && <button className="task-btn" onClick={() => setOpen(!open)}>{open ? '收起' : '展开'}</button>}
     </div>
   )
 }
