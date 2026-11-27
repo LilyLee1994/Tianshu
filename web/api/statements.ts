@@ -77,7 +77,7 @@ export default async function handler(req: Req, res: Res) {
 
       // 公司款项里标了“补房东 / 扣房东”的，按当月日期计入
       const ledgerAdj = new Map<number, number>()
-      const { data: lg } = await db.from('ledger').select('property_id, amount, owner_effect').neq('owner_effect', '无').gte('occurred_date', from).lt('occurred_date', to)
+      const { data: lg } = await db.from('ledger').select('property_id, amount, owner_effect').in('owner_effect', ['补房东', '扣房东']).gte('occurred_date', from).lt('occurred_date', to)
       for (const l of lg ?? []) {
         const v = Math.abs(Number(l.amount) || 0) * (l.owner_effect === '扣房东' ? -1 : 1)
         ledgerAdj.set(l.property_id as number, (ledgerAdj.get(l.property_id as number) ?? 0) + v)

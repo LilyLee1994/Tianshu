@@ -8,7 +8,7 @@ import { today } from '../lib/ui'
 const PLATFORMS = ['Airbnb', 'Booking.com', 'Vrbo', 'Terri Scheer', 'Turvi', '直订', '线下', '其他']
 const KINDS = ['收款', '押金收取', '线下转账', '退款', '协商退款', '清洁问题退款', '押金退还', '线下转出', '平台扣款', '赔付房东', '垫付费用']
 const OUT_KINDS = ['退款', '协商退款', '清洁问题退款', '押金退还', '线下转出', '平台扣款', '赔付房东', '垫付费用']  // 这几种是支出，金额存成负数
-const EFFECTS = ['无', '补房东', '扣房东']
+const EFFECTS = ['无', '补房东', '扣房东', '特殊折扣']
 const CATS = ['房费', '清洁费', '早入住', '晚退房', '加人/加晚', '延长入住', '取消订单', '投诉补偿', '预防差评', '删差评', '清洁问题', '钥匙/门禁', '房东报销', '索赔', '押金', '其他']
 const PAYERS = ['公司', '房东', '清洁公司', '客人', '平台', '无责任']
 const m = (n: number) => `$${Math.abs(n).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -151,7 +151,7 @@ function EditModal({ row, props, isAdmin, onClose, onSaved }: { row: Row | null;
     const body = {
       property_id: Number(f.property_id), occurred_date: f.occurred_date, platform: f.platform, order_ref: f.order_ref.trim() || null, guest_name: f.guest_name.trim() || null,
       check_in: f.check_in || null, check_out: f.check_out || null, kind: f.kind, category: f.category,
-      amount: OUT_KINDS.includes(f.kind) ? -Math.abs(n) : Math.abs(n), payer: f.payer || null, owner_effect: f.owner_effect, affects_owner: f.owner_effect !== '无', reason: f.reason.trim() || null,
+      amount: OUT_KINDS.includes(f.kind) ? -Math.abs(n) : Math.abs(n), payer: f.payer || null, owner_effect: f.owner_effect, affects_owner: f.owner_effect === '补房东' || f.owner_effect === '扣房东', reason: f.reason.trim() || null,
     }
     const { error } = row ? await supabase.from('ledger').update(body).eq('id', row.id) : await supabase.from('ledger').insert(body)
     setBusy(false)
@@ -184,7 +184,7 @@ function EditModal({ row, props, isAdmin, onClose, onSaved }: { row: Row | null;
         </div>
         <p className="muted small" style={{ margin: 0 }}>这一笔记为 <b style={{ color: out ? '#a3271c' : '#1f6b34' }}>{out ? '支出' : '收入'}</b>。</p>
         <label>对房东结算<select value={f.owner_effect} onChange={(e) => set('owner_effect', e.target.value)}>{EFFECTS.map((x) => <option key={x}>{x}</option>)}</select></label>
-        <p className="muted small" style={{ margin: 0 }}>无＝公司自己消化，或已在 Hostaway 订单里改好；补房东＝要多给房东这笔钱；扣房东＝要从房东款里扣掉这笔钱。金额都按上面填的数计算。</p>
+        <p className="muted small" style={{ margin: 0 }}>无＝公司自己消化，或已在 Hostaway 订单里改好；补房东＝要多给房东这笔钱；扣房东＝要从房东款里扣掉这笔钱；特殊折扣＝这笔钱要做到订单里（在订单金额里体现），不会单独补扣房东。金额都按上面填的数计算。</p>
         <label>原因说明<input value={f.reason} onChange={(e) => set('reason', e.target.value)} placeholder="例如：客人投诉，退部分房费" /></label>
         {err && <div className="err">{err}</div>}
         <div className="btn-row">
