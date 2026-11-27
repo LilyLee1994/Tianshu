@@ -51,7 +51,7 @@ export async function downloadRepairPdf(worker: string, period: string, rows: Pd
   if (chunks[chunks.length - 1].length > lastCap) chunks.push([])
   const today = new Date().toLocaleDateString('en-CA')
   const host = document.createElement('div')
-  host.style.cssText = 'position:absolute;left:0;top:0;z-index:-1;width:794px;overflow:hidden;pointer-events:none'
+  host.style.cssText = 'position:fixed;left:-10000px;top:0;width:794px;pointer-events:none'
   host.innerHTML = chunks.map((c, i) => pageHtml(worker, period, c, i === 0, i === chunks.length - 1, total, rows.length, i + 1, chunks.length, today)).join('')
   document.body.appendChild(host)
   try {
