@@ -57,7 +57,9 @@ export default function Dashboard() {
       for (const r of (sr.data ?? []) as unknown as { month: string; reason: string | null; user: { name: string } | null }[]) t.push({ tag: '排班', text: `${r.user?.name ?? '助理'} 申请变更 ${r.month.slice(0, 7)} 的排班：${r.reason || '（没写原因）'}`, to: '/shifts', cls: 'blue', lv: 'yellow' })
       for (const a of (oa.data ?? []) as unknown as { kind: string; detail: string; property: { name: string; assistant_id: string | null } | null }[]) if (mine(a.property?.assistant_id)) t.push({ tag: '订单异常', text: `${tagOf(a.property?.assistant_id)}${a.property?.name} · ${a.kind}：${a.detail}`, to: '/alerts', cls: 'purple', lv: 'red' })
       // 清洁上报损坏：没点“已处理”之前一直提醒负责这套房的助理
-      for (const x of (dm.data ?? []) as unknown as { damage_report: string; property: { name: string; assistant_id: string | null } | null }[]) {
+      let dmRows = dm.data
+      if (dm.error) { const r = await supabase.from('work_orders').select('id, damage_report, property:properties(name, assistant_id)').not('damage_report', 'is', null).neq('status', '已取消'); dmRows = r.data }  // 还没运行 048 时，不过滤“已处理”
+      for (const x of (dmRows ?? []) as unknown as { damage_report: string; property: { name: string; assistant_id: string | null } | null }[]) {
         if (mine(x.property?.assistant_id ?? null)) t.push({ tag: '清洁上报损坏', text: `${tagOf(x.property?.assistant_id ?? null)}${x.property?.name} · ${x.damage_report}`, to: '/orders', cls: 'amber', lv: 'red' })
       }
       // 新房源上线流程：
