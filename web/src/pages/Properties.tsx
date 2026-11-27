@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ProfitButton } from './PropertyProfit'
-import { cleanDesc } from '../lib/ui'
 import Loading from '../lib/Loading'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
@@ -209,65 +208,6 @@ function AccountBlock({ a, old, propertyId, canEdit, onChanged }: { a: PlatformA
   )
 }
 
-// 这套房的金额出入：索赔到账（收入）、差评赔偿（支出）、工单费用（支出）
-interface MoneyRow { date: string; item: string; text: string; amt: number; payer: string | null }
-function MoneyLog({ propertyId }: { propertyId: number }) {
-  const [rows, setRows] = useState<MoneyRow[] | null>(null)
-  const [err, setErr] = useState('')
-  useEffect(() => {
-    let off = false
-    Promise.all([
-      supabase.from('claims').select('content, status, paid_amount, paid_date, platform').eq('property_id', propertyId).in('status', ['已赔付', '客人直接赔付']),
-      supabase.from('review_actions').select('status, comp_amount, payer, handled_date, updated_at, note, review:reviews!inner(property_id, rating)').eq('review.property_id', propertyId).eq('status', '赔偿客人'),
-      supabase.from('work_orders').select('type, description, amount, payer, status, done_date, planned_date, created_at').eq('property_id', propertyId).not('amount', 'is', null).neq('status', '已取消'),
-      supabase.from('ledger').select('occurred_date, kind, category, amount, payer, guest_name, reason').eq('property_id', propertyId),
-    ]).then(([c, ra, w, lg]) => {
-      if (off) return
-      const e = c.error ?? ra.error ?? w.error ?? lg.error
-      if (e) { setErr(`金额记录读取失败：${e.message}`); return }
-      const out: MoneyRow[] = []
-      for (const x of c.data ?? []) if (Number(x.paid_amount) > 0) out.push({ date: x.paid_date ?? '', item: '索赔到账', text: x.content, amt: Number(x.paid_amount), payer: null })
-      for (const x of (ra.data ?? []) as never as { comp_amount: number | null; payer: string | null; handled_date: string | null; updated_at: string; note: string | null; review: { rating: number | null } | { rating: number | null }[] | null }[]) {
-        if (!(Number(x.comp_amount) > 0)) continue
-        const rv = Array.isArray(x.review) ? x.review[0] : x.review
-        out.push({ date: x.handled_date ?? x.updated_at.slice(0, 10), item: '差评赔偿', text: `${rv?.rating != null ? `${rv.rating} 分差评` : '差评'}${x.note ? `：${x.note}` : ''}`, amt: -Number(x.comp_amount), payer: x.payer })
-      }
-      for (const x of w.data ?? []) if (Number(x.amount) > 0) out.push({ date: x.done_date ?? x.planned_date ?? x.created_at.slice(0, 10), item: x.type, text: `${cleanDesc(x.description)}${x.status === '已完成' ? '' : `（${x.status}）`}`, amt: -Number(x.amount), payer: x.payer === '待定' ? null : x.payer })
-      for (const x of lg.data ?? []) out.push({ date: x.occurred_date, item: `款项·${x.category}`, text: `${x.kind}${x.guest_name ? ` · ${x.guest_name}` : ''}${x.reason ? `：${x.reason}` : ''}`, amt: Number(x.amount), payer: x.payer })
-      out.sort((a, b) => b.date.localeCompare(a.date))
-      setRows(out)
-    })
-    return () => { off = true }
-  }, [propertyId])
-  if (err) return <p className="err small">{err}</p>
-  if (!rows) return null
-  const inn = rows.filter((x) => x.amt > 0).reduce((n, x) => n + x.amt, 0)
-  const out = rows.filter((x) => x.amt < 0).reduce((n, x) => n - x.amt, 0)
-  const m = (n: number) => `$${n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-  return (
-    <div className="plat" style={{ display: 'block', marginTop: 12 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
-        <b>金额出入</b>
-        <span className="muted small">收入 <span style={{ color: '#1f6b34' }}>{m(inn)}</span> · 支出 <span style={{ color: '#a3271c' }}>{m(out)}</span> · 合计 {inn - out < 0 ? '−' : ''}{m(Math.abs(inn - out))}</span>
-      </div>
-      {!rows.length ? <p className="muted small" style={{ margin: '8px 0 0' }}>还没有金额记录。</p> : (
-        <div className="money-wrap">
-          <table className="money-tbl">
-            <thead><tr><th>日期</th><th>项目</th><th>说明</th><th style={{ textAlign: 'right' }}>金额</th><th>谁承担</th></tr></thead>
-            <tbody>{rows.map((x, i) => (
-              <tr key={i}>
-                <td style={{ whiteSpace: 'nowrap' }}>{x.date.slice(0, 10)}</td><td style={{ whiteSpace: 'nowrap' }}>{x.item}</td><td>{x.text}</td>
-                <td style={{ textAlign: 'right', whiteSpace: 'nowrap', color: x.amt > 0 ? '#1f6b34' : '#a3271c' }}>{x.amt > 0 ? '+' : '−'}{m(Math.abs(x.amt))}</td>
-                <td>{x.payer ?? '—'}</td>
-              </tr>
-            ))}</tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  )
-}
-
 // 编辑平台账号：改当前账号的邮箱/密码；房子重新上线换了新账号时，旧账号自动变成“老账号”；老账号也能增删改
 function AccountEditModal({ a, old, found, propertyId, onClose, onSaved }: {
   a: PlatformAccount | null; old: string[]; found: Record<string, { password: string | null; google_password: string | null }>
@@ -379,7 +319,6 @@ function Detail({ row: r, canEdit, isAdmin, onEdit, onChanged }: { row: Row; can
       </div>
       <HandoverCard propertyId={r.id} assistantId={r.assistant_id} />
       {(r.airbnb_account || canEdit) && <AccountBlock a={r.airbnb_account} old={r.account_info?.old_accounts ?? []} propertyId={r.id} canEdit={canEdit} onChanged={onChanged} />}
-      <MoneyLog propertyId={r.id} />
       {hist && <HistoryModal title={r.name} filters={[{ table: 'properties', id: r.id }, { table: 'property_details', id: r.id }, { table: 'property_contracts', id: r.id }, { table: 'property_account_info', id: r.id }]} onClose={() => setHist(false)} />}
       {st === '待登记合同' && <p className="warn">水电燃气网络和合同到期日填完整后，房源才算“运营中”。</p>}
     </section>
