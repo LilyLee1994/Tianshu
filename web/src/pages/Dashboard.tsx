@@ -143,6 +143,14 @@ export default function Dashboard() {
         for (const x of (sd.data ?? []) as unknown as { id: number; amount: number; guest_name: string | null; occurred_date: string; property: { name: string } | null }[])
           t.push({ tag: '特殊折扣待平账', text: `${x.property?.name ?? ''}${x.guest_name ? ` · ${x.guest_name}` : ''} · $${Math.abs(Number(x.amount)).toFixed(2).replace(/\.00$/, '')}（${x.occurred_date.slice(5)}），请到 Hostaway 订单里平账，平完后在公司款项点“标记已平账”`, to: '/company', cls: 'purple', lv: 'orange' })
       }
+      // 公司先垫付、还没向客人追回的款项
+      {
+        const rc = await supabase.from('ledger').select('id, amount, guest_name, occurred_date, property:properties(name, assistant_id)').eq('recover_status', '待追回').order('occurred_date').limit(100)
+        for (const x of (rc.data ?? []) as unknown as { id: number; amount: number; guest_name: string | null; occurred_date: string; property: { name: string; assistant_id: string | null } | null }[]) {
+          if (!mine(x.property?.assistant_id)) continue
+          t.push({ tag: '待追回', text: `${tagOf(x.property?.assistant_id)}${x.property?.name ?? ''}${x.guest_name ? ` · ${x.guest_name}` : ''} · 公司垫付 $${Math.abs(Number(x.amount)).toFixed(2).replace(/\.00$/, '')}（${x.occurred_date.slice(5)}），请向客人追回，收到后在公司款项点“标记已追回”`, to: '/company', cls: 'amber', lv: 'yellow' })
+        }
+      }
       // 明天有客人入住，今天（或更早）的清洁单还没完成 → 助理联系清洁公司
       {
         const sydToday = new Date().toLocaleDateString('en-CA', { timeZone: 'Australia/Sydney' })

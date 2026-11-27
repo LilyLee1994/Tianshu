@@ -12,12 +12,14 @@ const OUT_KINDS = ['退款', '协商退款', '清洁问题退款', '押金退还
 const EFFECTS = ['无', '补房东', '扣房东', '特殊折扣']
 const CATS = ['房费', '清洁费', '早入住', '晚退房', '加人/加晚', '延长入住', '取消订单', '投诉补偿', '预防差评', '删差评', '清洁问题', '钥匙/门禁', '房东报销', '索赔', '押金', '维修加价', '额外清洁', '跑腿', '其他']
 const PAYERS = ['公司', '房东', '清洁公司', '客人', '平台', '无责任']
+// Hostaway 的订单号很长（373921-guest-32473615-confirmation-HMCB8T8HDQ），只留最后的确认码 HMCB8T8HDQ
+const shortRef = (r: string | null | undefined) => (r ?? '').match(/confirmation-([A-Za-z0-9]+)\s*$/)?.[1] ?? (r ?? '')
 const m = (n: number) => `$${Math.abs(n).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 interface Row {
   id: number; property_id: number; occurred_date: string; platform: string; order_ref: string | null; guest_name: string | null
   check_in: string | null; check_out: string | null; kind: string; category: string; amount: number; reason: string | null
-  payer: string | null; affects_owner: boolean; owner_effect: string; reconciled: boolean; claim_id?: number | null; work_order_id?: number | null; order_adjusted_at?: string | null
+  payer: string | null; affects_owner: boolean; owner_effect: string; reconciled: boolean; claim_id?: number | null; work_order_id?: number | null; order_adjusted_at?: string | null; recover_status?: string
   property: { name: string; assistant_id: string | null } | null
 }
 interface Prop { id: number; name: string; assistant_id: string | null }
@@ -71,13 +73,17 @@ export default function CompanyFunds() {
   }), [rows, isAssistant, cover, ap])
   const visible = rows.filter((r) => !isAssistant || (r.property?.assistant_id && cover.has(r.property.assistant_id))).length
   // 特殊折扣：要在 Hostaway 订单里平账，财务/管理员平完账点“已平账”之后才按 0 计；没点之前照常计入
-  const isFlat = (r: Row) => r.owner_effect === '特殊折扣' && !!r.order_adjusted_at
+  const isFlat = (r: Row) => (r.owner_effect === '特殊折扣' && !!r.order_adjusted_at) || r.recover_status === '已追回'   // 已追回：客人已经把垫付的钱付回来了
   const counted = shown.filter((r) => !isFlat(r))
   const flat = shown.length - counted.length
   const inn = counted.filter((r) => r.amount > 0).reduce((n, r) => n + Number(r.amount), 0)
   const out = counted.filter((r) => r.amount < 0).reduce((n, r) => n - Number(r.amount), 0)
   const todo = shown.filter((r) => !r.reconciled).length
 
+  const toggleRecover = async (r: Row) => {
+    const { error } = await supabase.from('ledger').update({ recover_status: r.recover_status === '已追回' ? '待追回' : '已追回' }).eq('id', r.id)
+    if (error) setMsg(error.code === '42703' ? '保存失败：还没运行 071 迁移。' : error.message); else load()
+  }
   const toggleAdj = async (r: Row) => {
     const { error } = await supabase.from('ledger').update({ order_adjusted_at: r.order_adjusted_at ? null : new Date().toISOString() }).eq('id', r.id)
     if (error) setMsg(error.code === '42703' ? '保存失败：还没运行 070 迁移。' : error.message); else load()
@@ -119,22 +125,22 @@ export default function CompanyFunds() {
       {msg && <p className="err">{msg}</p>}
       <div className="table-wrap">
         <table style={{ minWidth: 1100 }}>
-          <thead><tr><th>日期</th><th>房源</th><th>平台</th><th>客人 / 订单号</th><th>类型 · 类别</th><th style={{ textAlign: 'right' }}>金额</th><th>责任方</th><th>对房东结算</th><th>已对账</th><th>原因</th><th></th></tr></thead>
+          <thead><tr><th>日期</th><th>房源</th><th>平台</th><th>客人 / 订单号</th><th>类型 · 类别</th><th style={{ textAlign: 'right' }}>金额</th><th style={{ whiteSpace: 'nowrap' }}>责任方</th><th>对房东结算</th><th style={{ whiteSpace: 'nowrap' }}>已对账</th><th>原因</th><th></th></tr></thead>
           <tbody>{shown.map((r) => (
             <tr key={r.id}>
               <td style={{ whiteSpace: 'nowrap' }}>{r.occurred_date.slice(5)}</td><td>{r.property?.name}</td><td>{r.platform}</td>
-              <td>{r.guest_name ?? '—'}{r.order_ref && <div className="muted small">{r.order_ref}</div>}</td>
+              <td>{r.guest_name ?? '—'}{r.order_ref && <div className="muted small">{shortRef(r.order_ref)}</div>}</td>
               <td style={{ whiteSpace: 'nowrap' }}>{r.kind} · {r.category}</td>
               <td style={{ textAlign: 'right', whiteSpace: 'nowrap', color: isFlat(r) ? '#7b8794' : r.amount > 0 ? '#1f6b34' : '#a3271c' }}>
                 {isFlat(r)
-                  ? <><span style={{ textDecoration: 'line-through' }}>{r.amount > 0 ? '+' : '−'}{m(Number(r.amount))}</span><div className="small">已平账，计 $0</div></>
-                  : <>{r.amount > 0 ? '+' : '−'}{m(Number(r.amount))}{r.owner_effect === '特殊折扣' && <div className="small" style={{ color: '#b26b00' }}>待平账</div>}</>}
+                  ? <><span style={{ textDecoration: 'line-through' }}>{r.amount > 0 ? '+' : '−'}{m(Number(r.amount))}</span><div className="small">{r.recover_status === '已追回' ? '已追回，计 $0' : '已平账，计 $0'}</div></>
+                  : <>{r.amount > 0 ? '+' : '−'}{m(Number(r.amount))}{r.owner_effect === '特殊折扣' && <div className="small" style={{ color: '#b26b00' }}>待平账</div>}{r.recover_status === '待追回' && <div className="small" style={{ color: '#b26b00' }}>待向客人追回</div>}</>}
               </td>
-              <td>{r.payer ?? '—'}</td>
+              <td style={{ whiteSpace: 'nowrap' }}>{r.payer ?? '—'}</td>
               <td>{r.owner_effect !== '无' ? <span className="chip amber" style={{ marginLeft: 0 }}>{r.owner_effect}</span> : '—'}</td>
               <td>{canReconcile ? <input type="checkbox" style={{ width: 'auto', minHeight: 0 }} checked={r.reconciled} onChange={() => toggleRec(r)} /> : r.reconciled ? '✓' : '—'}</td>
               <td style={{ maxWidth: 260 }}>{r.reason ?? ''}</td>
-              <td><span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>{r.owner_effect === '特殊折扣' && canReconcile && <button className="task-btn" onClick={() => toggleAdj(r)}>{r.order_adjusted_at ? '撤销平账' : '标记已平账'}</button>}{r.claim_id ? <button className="task-btn" onClick={() => nav(`/claims?id=${r.claim_id}`)}>来自索赔</button> : r.work_order_id ? <button className="task-btn" onClick={() => nav(`/repairs?id=${r.work_order_id}`)}>来自维修</button> : <button className="task-btn" onClick={() => setEdit(r)}>编辑</button>}</span></td>
+              <td><span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>{r.amount < 0 && r.recover_status && r.recover_status !== '无' && <button className="task-btn" onClick={() => toggleRecover(r)}>{r.recover_status === '已追回' ? '撤销已追回' : '标记已追回'}</button>}{r.owner_effect === '特殊折扣' && canReconcile && <button className="task-btn" onClick={() => toggleAdj(r)}>{r.order_adjusted_at ? '撤销平账' : '标记已平账'}</button>}{r.claim_id ? <button className="task-btn" onClick={() => nav(`/claims?id=${r.claim_id}`)}>来自索赔</button> : r.work_order_id ? <button className="task-btn" onClick={() => nav(`/repairs?id=${r.work_order_id}`)}>来自维修</button> : <button className="task-btn" onClick={() => setEdit(r)}>编辑</button>}</span></td>
             </tr>
           ))}</tbody>
         </table>
@@ -150,7 +156,7 @@ export function EditModal({ row, props, isAdmin, onClose, onSaved, defaultProper
     property_id: row ? String(row.property_id) : defaultProperty ? String(defaultProperty) : '', occurred_date: row?.occurred_date ?? today(), platform: row?.platform ?? 'Airbnb',
     order_ref: row?.order_ref ?? '', guest_name: row?.guest_name ?? '', check_in: row?.check_in ?? '', check_out: row?.check_out ?? '',
     kind: row?.kind ?? '收款', category: row?.category ?? '房费', amount: row ? String(Math.abs(Number(row.amount))) : '',
-    payer: row?.payer ?? '', owner_effect: row?.owner_effect ?? '无', reason: row?.reason ?? '',
+    recover: row?.recover_status ?? '无', payer: row?.payer ?? '', owner_effect: row?.owner_effect ?? '无', reason: row?.reason ?? '',
   })
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -167,14 +173,14 @@ export function EditModal({ row, props, isAdmin, onClose, onSaved, defaultProper
       .order('arrival_date', { ascending: false }).limit(100)
       .then(({ data }) => setResvs((data ?? []) as unknown as Resv[]))
   }, [f.property_id])
-  const resvOf = (ref: string, guest: string) => String(resvs.find((r) => (r.ref ?? String(r.id)) === ref && (r.guest_name ?? '') === guest)?.id ?? '')
+  const resvOf = (ref: string, guest: string) => String(resvs.find((r) => (shortRef(r.ref) || String(r.id)) === ref && (r.guest_name ?? '') === guest)?.id ?? '')
   const pickResv = (v: string) => {
     if (v === '__manual') { setManual(true); return }
     setManual(false)
     const r = resvs.find((x) => String(x.id) === v)
     if (!r) { setF((x) => ({ ...x, guest_name: '', order_ref: '', check_in: '', check_out: '' })); return }
     const ch = (r.channel_name ?? '').toLowerCase()
-    setF((x) => ({ ...x, guest_name: r.guest_name ?? '', order_ref: r.ref ?? String(r.id), check_in: r.arrival_date, check_out: r.departure_date,
+    setF((x) => ({ ...x, guest_name: r.guest_name ?? '', order_ref: shortRef(r.ref) || String(r.id), check_in: r.arrival_date, check_out: r.departure_date,
       platform: ch.includes('airbnb') ? 'Airbnb' : ch.includes('booking') ? 'Booking.com' : x.platform }))
   }
   const save = async () => {
@@ -185,11 +191,11 @@ export function EditModal({ row, props, isAdmin, onClose, onSaved, defaultProper
     const body = {
       property_id: Number(f.property_id), occurred_date: f.occurred_date, platform: f.platform, order_ref: f.order_ref.trim() || null, guest_name: f.guest_name.trim() || null,
       check_in: f.check_in || null, check_out: f.check_out || null, kind: f.kind, category: f.category,
-      amount: OUT_KINDS.includes(f.kind) ? -Math.abs(n) : Math.abs(n), payer: f.payer || null, owner_effect: f.owner_effect, affects_owner: f.owner_effect === '补房东' || f.owner_effect === '扣房东', reason: f.reason.trim() || null,
+      amount: OUT_KINDS.includes(f.kind) ? -Math.abs(n) : Math.abs(n), payer: f.payer || null, owner_effect: f.owner_effect, ...(f.recover !== (row?.recover_status ?? '无') ? { recover_status: OUT_KINDS.includes(f.kind) ? f.recover : '无' } : {}), affects_owner: f.owner_effect === '补房东' || f.owner_effect === '扣房东', reason: f.reason.trim() || null,
     }
     const { error } = row ? await supabase.from('ledger').update(body).eq('id', row.id) : await supabase.from('ledger').insert(body)
     setBusy(false)
-    if (error) { setErr(`保存失败：${error.message}`); return }
+    if (error) { setErr(error.code === '42703' || /recover_status/.test(error.message) ? '保存失败：还没运行 071 迁移。' : `保存失败：${error.message}`); return }
     onSaved('ok')
   }
   const del = async () => {
@@ -210,7 +216,7 @@ export function EditModal({ row, props, isAdmin, onClose, onSaved, defaultProper
           <label style={{ gridColumn: '1 / -1' }}>订单（选填，近 2 个月，最近的在最前）
             <select value={manual ? '__manual' : resvOf(f.order_ref, f.guest_name)} onChange={(e) => pickResv(e.target.value)} disabled={!f.property_id}>
               <option value="">{f.property_id ? '不关联订单' : '先选房源'}</option>
-              {resvs.map((r) => <option key={r.id} value={String(r.id)}>{r.guest_name ?? '（无姓名）'} · {r.arrival_date.slice(5)} ~ {r.departure_date.slice(5)} · #{r.ref ?? r.id}{/cancel/i.test(r.status ?? '') ? ' · 已取消' : ''}</option>)}
+              {resvs.map((r) => <option key={r.id} value={String(r.id)}>{r.guest_name ?? '（无姓名）'} · {r.arrival_date.slice(5)} ~ {r.departure_date.slice(5)} · #{shortRef(r.ref) || r.id}{/cancel/i.test(r.status ?? '') ? ' · 已取消' : ''}</option>)}
               <option value="__manual">订单不在列表里，手动填写…</option>
             </select>
           </label>
@@ -224,6 +230,8 @@ export function EditModal({ row, props, isAdmin, onClose, onSaved, defaultProper
           <label>责任方<select value={f.payer} onChange={(e) => set('payer', e.target.value)}><option value="">不填</option>{PAYERS.map((x) => <option key={x}>{x}</option>)}</select></label>
         </div>
         <p className="muted small" style={{ margin: 0 }}>这一笔记为 <b style={{ color: out ? '#a3271c' : '#1f6b34' }}>{out ? '支出' : '收入'}</b>。</p>
+        {out && <label>向客人追回<select value={f.recover} onChange={(e) => set('recover', e.target.value)}><option>无</option><option>待追回</option><option>已追回</option></select></label>}
+        {out && <p className="muted small" style={{ margin: 0 }}>公司先垫付、之后要向客人收回的（比如跑腿、额外清洁），只记这一笔支出，选“待追回”；客人付了之后，在列表里点“标记已追回”，这笔就按 $0 计，不用再另外记一笔收款。</p>}
         <label>对房东结算<select value={f.owner_effect} onChange={(e) => set('owner_effect', e.target.value)}>{EFFECTS.map((x) => <option key={x}>{x}</option>)}</select></label>
         <p className="muted small" style={{ margin: 0 }}>无＝公司自己消化，或已在 Hostaway 订单里改好；补房东＝要多给房东这笔钱；扣房东＝要从房东款里扣掉这笔钱；特殊折扣＝这笔钱要去 Hostaway 订单里平账，不会单独补扣房东。财务或管理员平完账后，在列表里点“标记已平账”，这条才按 $0 计；没点之前照常计入收支。其他情况金额都按上面填的数计算。</p>
         <label>原因说明<input value={f.reason} onChange={(e) => set('reason', e.target.value)} placeholder="例如：客人投诉，退部分房费" /></label>

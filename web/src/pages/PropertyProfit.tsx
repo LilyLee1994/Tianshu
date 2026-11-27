@@ -5,7 +5,7 @@ import Loading from '../lib/Loading'
 import DateRange from '../lib/DateRange'
 
 interface St { property_id: number; period_start: string; period_end: string; commission: number; reservations: number; nights: number; property: { name: string } | null }
-interface Led { id: number; occurred_date: string; reason: string | null; guest_name: string | null; property_id: number; kind: string; category: string; amount: number; owner_effect: string; order_adjusted_at: string | null }
+interface Led { recover_status?: string; id: number; occurred_date: string; reason: string | null; guest_name: string | null; property_id: number; kind: string; category: string; amount: number; owner_effect: string; order_adjusted_at: string | null }
 interface Wo { id: number; property_id: number; amount: number | null; description: string | null; done_date: string | null }
 interface Item { sec: string; date: string; text: string; amount: number }
 const SECS = ['服务费', '维修加价', '索赔留下', '公司承担维修', '清洁公司费用', '其他支出'] as const
@@ -17,15 +17,19 @@ interface Line {
 const GST = 0.1
 const sgn = (n: number) => (!n ? <span className="muted">—</span> : <span style={{ color: n > 0 ? '#0f7a4a' : '#c0392b', whiteSpace: 'nowrap' }}>{n > 0 ? '+' : '−'}{money(Math.abs(n))}</span>)
 
+const LCOLS = 'id, occurred_date, reason, guest_name, property_id, kind, category, amount, owner_effect, order_adjusted_at'
 async function fetchLines(pid?: number, from = '', to = ''): Promise<{ lines: Line[]; error?: string }> {
   // 不选日期 = 从开始到现在的累计；选了日期只算这段时间
+  const ledgerQ = (cols: string) => rng(pid ? supabase.from('ledger').select(cols).eq('property_id', pid) : supabase.from('ledger').select(cols), 'occurred_date').limit(50000)
   const rng = <T extends { gte: (c: string, v: string) => T; lte: (c: string, v: string) => T }>(q: T, col: string): T => { let r = q; if (from) r = r.gte(col, from); if (to) r = r.lte(col, to); return r }
     const [st, lg, wo] = await Promise.all([
       rng(pid ? supabase.from('owner_statements').select('property_id, period_start, period_end, commission, reservations, nights, property:properties(name)').eq('property_id', pid) : supabase.from('owner_statements').select('property_id, period_start, period_end, commission, reservations, nights, property:properties(name)'), 'period_start').limit(20000),
-      rng(pid ? supabase.from('ledger').select('id, occurred_date, reason, guest_name, property_id, kind, category, amount, owner_effect, order_adjusted_at').eq('property_id', pid) : supabase.from('ledger').select('id, occurred_date, reason, guest_name, property_id, kind, category, amount, owner_effect, order_adjusted_at'), 'occurred_date').limit(50000),
+      ledgerQ(`${LCOLS}, recover_status`),
       rng((pid ? supabase.from('work_orders').select('id, property_id, amount, description, done_date').eq('property_id', pid) : supabase.from('work_orders').select('id, property_id, amount, description, done_date')).eq('type', '维修').eq('status', '已完成').eq('payer', '公司'), 'done_date').limit(50000),
     ])
-    const err = st.error ?? lg.error ?? wo.error
+    let lgData = lg.data as unknown as Led[] | null, lgErr = lg.error
+    if (lgErr) { const r2 = await ledgerQ(LCOLS); lgData = r2.data as unknown as Led[] | null; lgErr = r2.error }   // 兜底：还没运行 071 时，没有“追回状态”这一列，退回不带它读取
+    const err = st.error ?? lgErr ?? wo.error
     if (err) return { lines: [], error: `读取出错：${err.message}` }
     const m = new Map<number, Line & { ms: Set<string> }>()
     const get = (id: number, name = '') => { let l = m.get(id); if (!l) { l = { id, name, months: 0, orders: 0, nights: 0, fee: 0, markup: 0, claims: 0, repair: 0, cleaner: 0, other: 0, profit: 0, items: [], ms: new Set() }; m.set(id, l) } if (name) l.name = name; return l }
@@ -35,9 +39,9 @@ async function fetchLines(pid?: number, from = '', to = ''): Promise<{ lines: Li
       l.fee += Number(s.commission) / (1 + GST)          // 服务费按不含 GST 算
       l.items.push({ sec: '服务费', date: s.period_start, text: `${s.period_start} ~ ${s.period_end} 房东结算的佣金 ${money(s.commission)}，去掉 GST`, amount: Number(s.commission) / (1 + GST) })
     }
-    for (const r of (lg.data ?? []) as Led[]) {
+    for (const r of lgData ?? []) {
       const l = get(r.property_id), a = Number(r.amount)
-      if (r.owner_effect === '特殊折扣' && r.order_adjusted_at) continue   // 已在订单里平账，按 0 计
+      if ((r.owner_effect === '特殊折扣' && r.order_adjusted_at) || r.recover_status === '已追回') continue   // 已在订单里平账，按 0 计
       const note = [r.kind + ' · ' + r.category, r.guest_name, r.reason].filter(Boolean).join(' · ')
       const add = (sec: string) => l.items.push({ sec, date: r.occurred_date, text: note, amount: a })
       if (r.category === '维修加价') { l.markup += a; add('维修加价'); continue }
