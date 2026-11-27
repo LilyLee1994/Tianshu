@@ -16,7 +16,7 @@ const m = (n: number) => `$${Math.abs(n).toLocaleString('en-AU', { minimumFracti
 interface Row {
   id: number; property_id: number; occurred_date: string; platform: string; order_ref: string | null; guest_name: string | null
   check_in: string | null; check_out: string | null; kind: string; category: string; amount: number; reason: string | null
-  payer: string | null; affects_owner: boolean; owner_effect: string; reconciled: boolean; claim_id?: number | null; work_order_id?: number | null
+  payer: string | null; affects_owner: boolean; owner_effect: string; reconciled: boolean; claim_id?: number | null; work_order_id?: number | null; order_adjusted_at?: string | null
   property: { name: string; assistant_id: string | null } | null
 }
 interface Prop { id: number; name: string; assistant_id: string | null }
@@ -68,13 +68,18 @@ export default function CompanyFunds() {
     return true
   }), [rows, isAssistant, cover, ap])
   const visible = rows.filter((r) => !isAssistant || (r.property?.assistant_id && cover.has(r.property.assistant_id))).length
-  // 对房东结算选“特殊折扣”的，钱已经在 Hostaway 订单里平掉了，对公司来说最终是 0，不计入收入、支出和合计
-  const counted = shown.filter((r) => r.owner_effect !== '特殊折扣')
+  // 特殊折扣：要在 Hostaway 订单里平账，财务/管理员平完账点“已平账”之后才按 0 计；没点之前照常计入
+  const isFlat = (r: Row) => r.owner_effect === '特殊折扣' && !!r.order_adjusted_at
+  const counted = shown.filter((r) => !isFlat(r))
   const flat = shown.length - counted.length
   const inn = counted.filter((r) => r.amount > 0).reduce((n, r) => n + Number(r.amount), 0)
   const out = counted.filter((r) => r.amount < 0).reduce((n, r) => n - Number(r.amount), 0)
   const todo = shown.filter((r) => !r.reconciled).length
 
+  const toggleAdj = async (r: Row) => {
+    const { error } = await supabase.from('ledger').update({ order_adjusted_at: r.order_adjusted_at ? null : new Date().toISOString() }).eq('id', r.id)
+    if (error) setMsg(error.code === '42703' ? '保存失败：还没运行 070 迁移。' : error.message); else load()
+  }
   const toggleRec = async (r: Row) => {
     const { error } = await supabase.from('ledger').update({ reconciled: !r.reconciled }).eq('id', r.id)
     if (error) setMsg(error.message); else load()
@@ -82,7 +87,7 @@ export default function CompanyFunds() {
 
   const exportCsv = () => {
     const head = ['日期', '房源', '平台', '客人', '订单号', '入住', '退房', '类型', '类别', '金额', '责任方', '对房东结算', '已对账', '原因']
-    const lines = shown.map((r) => [r.occurred_date, r.property?.name ?? '', r.platform, r.guest_name ?? '', r.order_ref ?? '', r.check_in ?? '', r.check_out ?? '', r.kind, r.category, r.owner_effect === '特殊折扣' ? 0 : r.amount, r.payer ?? '', r.owner_effect, r.reconciled ? '是' : '否', r.reason ?? ''])
+    const lines = shown.map((r) => [r.occurred_date, r.property?.name ?? '', r.platform, r.guest_name ?? '', r.order_ref ?? '', r.check_in ?? '', r.check_out ?? '', r.kind, r.category, isFlat(r) ? 0 : r.amount, r.payer ?? '', r.owner_effect, r.reconciled ? '是' : '否', r.reason ?? ''])
     const csv = '\ufeff' + [head, ...lines].map((l) => l.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); a.download = `公司款项${ap.from || ap.to ? `_${ap.from || '起'}至${ap.to || '今'}` : ''}.csv`; a.click()
   }
@@ -109,7 +114,7 @@ export default function CompanyFunds() {
         <button className="ghost" onClick={exportCsv}>导出 CSV</button>
       </div>
       <p className="muted small" style={{ margin: '0 0 8px' }}>
-        {shown.length} 条 · 收入 <span style={{ color: '#1f6b34' }}>{m(inn)}</span> · 支出 <span style={{ color: '#a3271c' }}>{m(out)}</span> · 合计 {inn - out < 0 ? '−' : ''}{m(inn - out)}{flat > 0 && <span className="muted small">（另有 {flat} 条特殊折扣已在订单平账，按 $0 计）</span>} · 未对账 {todo} 条
+        {shown.length} 条 · 收入 <span style={{ color: '#1f6b34' }}>{m(inn)}</span> · 支出 <span style={{ color: '#a3271c' }}>{m(out)}</span> · 合计 {inn - out < 0 ? '−' : ''}{m(inn - out)}{flat > 0 && <span className="muted small">（另有 {flat} 条特殊折扣已平账，按 $0 计）</span>} · 未对账 {todo} 条
       </p>
       {msg && <p className="err">{msg}</p>}
       <div className="table-wrap">
@@ -120,16 +125,16 @@ export default function CompanyFunds() {
               <td style={{ whiteSpace: 'nowrap' }}>{r.occurred_date.slice(5)}</td><td>{r.property?.name}</td><td>{r.platform}</td>
               <td>{r.guest_name ?? '—'}{r.order_ref && <div className="muted small">{r.order_ref}</div>}</td>
               <td style={{ whiteSpace: 'nowrap' }}>{r.kind} · {r.category}</td>
-              <td style={{ textAlign: 'right', whiteSpace: 'nowrap', color: r.owner_effect === '特殊折扣' ? '#7b8794' : r.amount > 0 ? '#1f6b34' : '#a3271c' }}>
-                {r.owner_effect === '特殊折扣'
-                  ? <><span style={{ textDecoration: 'line-through' }}>{r.amount > 0 ? '+' : '−'}{m(Number(r.amount))}</span><div className="small">订单平账，计 $0</div></>
-                  : <>{r.amount > 0 ? '+' : '−'}{m(Number(r.amount))}</>}
+              <td style={{ textAlign: 'right', whiteSpace: 'nowrap', color: isFlat(r) ? '#7b8794' : r.amount > 0 ? '#1f6b34' : '#a3271c' }}>
+                {isFlat(r)
+                  ? <><span style={{ textDecoration: 'line-through' }}>{r.amount > 0 ? '+' : '−'}{m(Number(r.amount))}</span><div className="small">已平账，计 $0</div></>
+                  : <>{r.amount > 0 ? '+' : '−'}{m(Number(r.amount))}{r.owner_effect === '特殊折扣' && <div className="small" style={{ color: '#b26b00' }}>待平账</div>}</>}
               </td>
               <td>{r.payer ?? '—'}</td>
               <td>{r.owner_effect !== '无' ? <span className="chip amber" style={{ marginLeft: 0 }}>{r.owner_effect}</span> : '—'}</td>
               <td>{canReconcile ? <input type="checkbox" style={{ width: 'auto', minHeight: 0 }} checked={r.reconciled} onChange={() => toggleRec(r)} /> : r.reconciled ? '✓' : '—'}</td>
               <td style={{ maxWidth: 260 }}>{r.reason ?? ''}</td>
-              <td>{r.claim_id ? <button className="task-btn" onClick={() => nav(`/claims?id=${r.claim_id}`)}>来自索赔</button> : r.work_order_id ? <button className="task-btn" onClick={() => nav(`/repairs?id=${r.work_order_id}`)}>来自维修</button> : <button className="task-btn" onClick={() => setEdit(r)}>编辑</button>}</td>
+              <td className="btn-row" style={{ margin: 0 }}>{r.owner_effect === '特殊折扣' && canReconcile && <button className="task-btn" onClick={() => toggleAdj(r)}>{r.order_adjusted_at ? '撤销平账' : '标记已平账'}</button>}{r.claim_id ? <button className="task-btn" onClick={() => nav(`/claims?id=${r.claim_id}`)}>来自索赔</button> : r.work_order_id ? <button className="task-btn" onClick={() => nav(`/repairs?id=${r.work_order_id}`)}>来自维修</button> : <button className="task-btn" onClick={() => setEdit(r)}>编辑</button>}</td>
             </tr>
           ))}</tbody>
         </table>
@@ -191,7 +196,7 @@ function EditModal({ row, props, isAdmin, onClose, onSaved }: { row: Row | null;
         </div>
         <p className="muted small" style={{ margin: 0 }}>这一笔记为 <b style={{ color: out ? '#a3271c' : '#1f6b34' }}>{out ? '支出' : '收入'}</b>。</p>
         <label>对房东结算<select value={f.owner_effect} onChange={(e) => set('owner_effect', e.target.value)}>{EFFECTS.map((x) => <option key={x}>{x}</option>)}</select></label>
-        <p className="muted small" style={{ margin: 0 }}>无＝公司自己消化，或已在 Hostaway 订单里改好；补房东＝要多给房东这笔钱；扣房东＝要从房东款里扣掉这笔钱；特殊折扣＝这笔钱要去 Hostaway 订单里平账，不会单独补扣房东，在公司款项里最终按 $0 计（不计入收入、支出和合计）。其他情况金额都按上面填的数计算。</p>
+        <p className="muted small" style={{ margin: 0 }}>无＝公司自己消化，或已在 Hostaway 订单里改好；补房东＝要多给房东这笔钱；扣房东＝要从房东款里扣掉这笔钱；特殊折扣＝这笔钱要去 Hostaway 订单里平账，不会单独补扣房东。财务或管理员平完账后，在列表里点“标记已平账”，这条才按 $0 计；没点之前照常计入收支。其他情况金额都按上面填的数计算。</p>
         <label>原因说明<input value={f.reason} onChange={(e) => set('reason', e.target.value)} placeholder="例如：客人投诉，退部分房费" /></label>
         {err && <div className="err">{err}</div>}
         <div className="btn-row">
