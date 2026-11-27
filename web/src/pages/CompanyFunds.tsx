@@ -9,14 +9,14 @@ const PLATFORMS = ['Airbnb', 'Booking.com', 'Vrbo', 'Terri Scheer', 'Turvi', '�
 const KINDS = ['收款', '押金收取', '线下转账', '退款', '协商退款', '清洁问题退款', '押金退还', '线下转出', '平台扣款', '赔付房东', '垫付费用']
 const OUT_KINDS = ['退款', '协商退款', '清洁问题退款', '押金退还', '线下转出', '平台扣款', '赔付房东', '垫付费用']  // 这几种是支出，金额存成负数
 const EFFECTS = ['无', '补房东', '扣房东', '特殊折扣']
-const CATS = ['房费', '清洁费', '早入住', '晚退房', '加人/加晚', '延长入住', '取消订单', '投诉补偿', '预防差评', '删差评', '清洁问题', '钥匙/门禁', '房东报销', '索赔', '押金', '其他']
+const CATS = ['房费', '清洁费', '早入住', '晚退房', '加人/加晚', '延长入住', '取消订单', '投诉补偿', '预防差评', '删差评', '清洁问题', '钥匙/门禁', '房东报销', '索赔', '押金', '维修加价', '其他']
 const PAYERS = ['公司', '房东', '清洁公司', '客人', '平台', '无责任']
 const m = (n: number) => `$${Math.abs(n).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 interface Row {
   id: number; property_id: number; occurred_date: string; platform: string; order_ref: string | null; guest_name: string | null
   check_in: string | null; check_out: string | null; kind: string; category: string; amount: number; reason: string | null
-  payer: string | null; affects_owner: boolean; owner_effect: string; reconciled: boolean; claim_id?: number | null
+  payer: string | null; affects_owner: boolean; owner_effect: string; reconciled: boolean; claim_id?: number | null; work_order_id?: number | null
   property: { name: string; assistant_id: string | null } | null
 }
 interface Prop { id: number; name: string; assistant_id: string | null }
@@ -122,7 +122,7 @@ export default function CompanyFunds() {
               <td>{r.owner_effect !== '无' ? <span className="chip amber" style={{ marginLeft: 0 }}>{r.owner_effect}</span> : '—'}</td>
               <td>{canReconcile ? <input type="checkbox" style={{ width: 'auto', minHeight: 0 }} checked={r.reconciled} onChange={() => toggleRec(r)} /> : r.reconciled ? '✓' : '—'}</td>
               <td style={{ maxWidth: 260 }}>{r.reason ?? ''}</td>
-              <td>{r.claim_id ? <button className="task-btn" onClick={() => nav(`/claims?id=${r.claim_id}`)}>来自索赔</button> : <button className="task-btn" onClick={() => setEdit(r)}>编辑</button>}</td>
+              <td>{r.claim_id ? <button className="task-btn" onClick={() => nav(`/claims?id=${r.claim_id}`)}>来自索赔</button> : r.work_order_id ? <button className="task-btn" onClick={() => nav(`/repairs?id=${r.work_order_id}`)}>来自维修</button> : <button className="task-btn" onClick={() => setEdit(r)}>编辑</button>}</td>
             </tr>
           ))}</tbody>
         </table>
