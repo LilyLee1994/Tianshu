@@ -1,4 +1,5 @@
 import { adminClient, requireWorker, sydneyToday, type Req, type Res } from './_lib.js'
+import { notifyUser } from './_notify.js'
 
 // 师傅 / 清洁公司提交动作：接单、提交完成、上报损坏
 export default async function handler(req: Req, res: Res) {
@@ -11,6 +12,13 @@ export default async function handler(req: Req, res: Res) {
     const { data: o } = await db.from('work_orders').select('id, type, status, assigned_to').eq('id', id).maybeSingle()
     if (!o || o.assigned_to !== me.id) return res.status(404).json({ error: '找不到这张工单。' })
 
+    // 师傅有动作时，微信通知这套房的主责助理
+    const tellAssistant = async (what: string) => {
+      const { data: w } = await db.from('work_orders').select('type, description, property:properties(name, assistant_id)').eq('id', id).maybeSingle()
+      const p = (w?.property as unknown as { name: string; assistant_id: string | null } | null)
+      if (p?.assistant_id) await notifyUser(db, p.assistant_id, `${p.name} · ${w?.type}：${what}`, `${p.name}<br>${w?.type}：${String(w?.description ?? '').replace(/^【索赔#\d+】/, '')}<br>${what}`)
+    }
+
     // 照片路径必须是这张工单自己的目录，防止塞别人的文件
     const paths: string[] = Array.isArray(photos) ? photos.map(String) : []
     if (paths.some((p) => !p.startsWith(`${id}/`) || p.includes('..'))) return res.status(400).json({ error: '照片不对。' })
@@ -19,6 +27,7 @@ export default async function handler(req: Req, res: Res) {
       if (me.role !== 'repairman' || o.status !== '已派单') return res.status(400).json({ error: '现在不能接单。' })
       const u = await db.from('work_orders').update({ status: '已接单' }).eq('id', id)
       if (u.error) return res.status(400).json({ error: `保存失败：${u.error.message}` })
+      await tellAssistant('师傅已接单')
       return res.status(200).json({ ok: true })
     }
     if (action === 'complete') {
@@ -35,6 +44,7 @@ export default async function handler(req: Req, res: Res) {
         const u = await db.from('work_orders').update({ status: '已完成', photos: paths, done_date: sydneyToday() }).eq('id', id)
         if (u.error) return res.status(400).json({ error: `保存失败：${u.error.message}` })
       }
+      await tellAssistant(me.role === 'repairman' ? '师傅已完成，请确认费用' : '清洁已完成')
       return res.status(200).json({ ok: true })
     }
     if (action === 'damage') {
@@ -54,6 +64,7 @@ export default async function handler(req: Req, res: Res) {
         if (r.error) await db.from('claims').insert(row) // 还没运行 049 / 051 时，不带关联和入住人也要生成
         await db.from('work_orders').update({ damage_handled: true }).eq('id', id)
       }
+      await tellAssistant('清洁上报了损坏，请到索赔里处理')
       return res.status(200).json({ ok: true })
     }
     return res.status(400).json({ error: '未知操作。' })

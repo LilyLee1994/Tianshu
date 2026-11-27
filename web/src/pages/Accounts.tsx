@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { callApi } from '../lib/api'
 import { ROLE_LABEL, type Role } from '../lib/auth'
 
-interface User { id: string; account: string; name: string; role: Role; contact: string | null; active: boolean }
+interface User { id: string; account: string; name: string; role: Role; contact: string | null; active: boolean; wechat_token?: string | null }
 interface Prop { id: number; name: string; region: string | null; assistant_id: string | null; cleaning_by: string }
 
 export default function Accounts() {
@@ -16,10 +16,13 @@ export default function Accounts() {
 
   const load = useCallback(async () => {
     const [u, p] = await Promise.all([
-      supabase.from('profiles').select('id, account, name, role, contact, active').order('created_at'),
+      supabase.from('profiles').select('id, account, name, role, contact, active, wechat_token').order('created_at'),
       supabase.from('properties').select('id, name, region, assistant_id, cleaning_by').order('name'),
     ])
-    if (u.data) setUsers(u.data as User[])
+    if (u.error) {   // 还没运行 072 迁移时没有 wechat_token 这一列，退回不读它
+      const r = await supabase.from('profiles').select('id, account, name, role, contact, active').order('created_at')
+      if (r.data) setUsers(r.data as User[])
+    } else if (u.data) setUsers(u.data as unknown as User[])
     if (p.data) setProps(p.data as Prop[])
   }, [])
   useEffect(() => { load() }, [load])
@@ -27,6 +30,14 @@ export default function Accounts() {
   const count = (uid: string) => props.filter((p) => p.assistant_id === uid).length
   const assistants = users.filter((u) => u.role === 'assistant' && u.active)
 
+  const bindWechat = async (u: User) => {
+    const v = window.prompt(`填 ${u.name} 的 PushPlus token（让 TA 微信关注“pushplus推送加”公众号，在里面能看到；留空表示取消绑定）`, u.wechat_token ?? '')
+    if (v === null) return
+    setErr(''); setMsg('')
+    const { error } = await supabase.from('profiles').update({ wechat_token: v.trim() || null }).eq('id', u.id)
+    if (error) { setErr(error.code === '42703' ? '保存失败：还没运行 072 迁移。' : error.message); return }
+    setMsg(v.trim() ? `已绑定 ${u.name} 的微信通知。` : `已取消 ${u.name} 的微信通知。`); load()
+  }
   const reset = async (u: User) => {
     setErr(''); setMsg('')
     const [r, e] = await callApi<{ password: string }>('reset-password', { userId: u.id })
@@ -71,12 +82,13 @@ export default function Accounts() {
       )}
       <div className="table-wrap">
         <table style={{ minWidth: 760 }}>
-          <thead><tr><th>姓名</th><th>登录账号</th><th>角色</th><th>联系方式</th><th>负责房源</th><th>状态</th><th>操作</th></tr></thead>
+          <thead><tr><th>姓名</th><th>登录账号</th><th>角色</th><th>联系方式</th><th>负责房源</th><th>微信通知</th><th>状态</th><th>操作</th></tr></thead>
           <tbody>
             {users.map((u) => (
               <tr key={u.id}>
                 <td><b>{u.name}</b></td><td>{u.account}</td><td>{ROLE_LABEL[u.role]}</td><td>{u.contact ?? '—'}</td>
                 <td>{u.role === 'assistant' ? `${count(u.id)} 个` : '—'}</td>
+                <td>{u.wechat_token ? <span className="chip green" style={{ marginLeft: 0 }}>已绑定</span> : <span className="muted small">未绑定</span>} <button className="task-btn" onClick={() => bindWechat(u)}>{u.wechat_token ? '修改' : '绑定'}</button></td>
                 <td><span className={u.active ? 'chip green' : 'chip gray'}>{u.active ? '启用' : '停用'}</span></td>
                 <td className="btn-row" style={{ margin: 0 }}>
                   <button className="ghost" onClick={() => reset(u)}>重置密码</button>
