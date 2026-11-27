@@ -1,4 +1,5 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import Loading from './lib/Loading'
 import { AuthProvider, useAuth } from './lib/auth'
 import Layout, { NAV } from './layout/Layout'
 import Login from './pages/Login'
@@ -27,7 +28,7 @@ const PAGES: Record<string, React.ReactElement> = {
 
 function Gate() {
   const { loading, profile } = useAuth()
-  if (loading) return <p className="muted pad">加载中…</p>
+  if (loading) return <Loading />
   if (!profile) return <Login />
   if (profile.role === 'repairman' || profile.role === 'cleaner') return <WorkerApp />
   return (

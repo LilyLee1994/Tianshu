@@ -1,4 +1,5 @@
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import Loading from '../lib/Loading'
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { chipOf, money, today } from '../lib/ui'
@@ -68,7 +69,7 @@ export default function Orders() {
     if (!focusId || loading) return
     document.getElementById(`wo-${focusId}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
   }, [focusId, loading, rows.length])
-  if (loading) return <p className="muted">加载中…</p>
+  if (loading) return <Loading />
 
   return (
     <div>

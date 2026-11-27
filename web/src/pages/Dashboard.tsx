@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import Loading from '../lib/Loading'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { supabase as _s } from '../lib/supabase'
@@ -160,7 +161,7 @@ export default function Dashboard() {
     })
   }, [])
 
-  if (loading) return <p className="muted">加载中…</p>
+  if (loading) return <Loading />
   return (
     <div>
       <h1>总览</h1>

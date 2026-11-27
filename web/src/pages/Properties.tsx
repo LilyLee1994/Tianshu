@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import Loading from '../lib/Loading'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { callApi } from '../lib/api'
@@ -89,7 +90,7 @@ export default function Properties() {
   const cur = list.find((r) => r.id === sel) ?? list[0]
   const canEdit = !!cur && (isAdmin || (isAssistant && cur.assistant_id === profile?.id))
 
-  if (loading) return <p className="muted">加载中…</p>
+  if (loading) return <Loading />
   if (err) return <p className="err">读取失败：{err}</p>
 
   const sync = async () => {

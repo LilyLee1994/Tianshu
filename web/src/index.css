@@ -197,3 +197,20 @@ td .btn-row { flex-wrap: nowrap; }
 .handover-note { font-size: 14px; line-height: 1.5; }
 .handover-item { font-size: 14px; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
 .handover-add { display: flex; gap: 8px; margin-top: 4px; } .handover-add input { flex: 1; }
+
+/* 全屏加载动画 */
+.loading-screen { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; background: rgba(244, 246, 248, 0.94); backdrop-filter: blur(3px); opacity: 0; animation: loading-in 0.25s ease 0.15s forwards; }
+.loading-box { display: flex; flex-direction: column; align-items: center; gap: 22px; }
+.loading-orbit { position: relative; width: 84px; height: 84px; display: flex; align-items: center; justify-content: center; }
+.loading-orbit b { width: 46px; height: 46px; border-radius: 14px; background: #0f6b66; color: #fff; font-size: 22px; font-weight: 600; display: flex; align-items: center; justify-content: center; animation: loading-pulse 1.6s ease-in-out infinite; }
+.loading-orbit i { position: absolute; inset: 0; border-radius: 50%; border: 3px solid transparent; border-top-color: #0f6b66; animation: loading-spin 1.2s linear infinite; }
+.loading-orbit i:nth-child(2) { inset: 8px; border-top-color: #5fb3ad; animation-duration: 1.8s; animation-direction: reverse; }
+.loading-orbit i:nth-child(3) { inset: -8px; border-top-color: #cfe5e3; animation-duration: 2.4s; }
+.loading-text { font-size: 15px; color: #4a5a68; letter-spacing: 1px; }
+.loading-dots em { font-style: normal; display: inline-block; animation: loading-dot 1.2s ease-in-out infinite; }
+.loading-dots em:nth-child(2) { animation-delay: 0.2s; }
+.loading-dots em:nth-child(3) { animation-delay: 0.4s; }
+@keyframes loading-in { to { opacity: 1; } }
+@keyframes loading-spin { to { transform: rotate(360deg); } }
+@keyframes loading-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+@keyframes loading-dot { 0%, 80%, 100% { opacity: 0.2; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }

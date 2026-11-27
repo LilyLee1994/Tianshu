@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import Loading from '../lib/Loading'
 import { useSearchParams } from 'react-router-dom'
 import { useFocusScroll } from '../lib/focus'
 import { supabase } from '../lib/supabase'
@@ -19,7 +20,7 @@ export default function Contracts() {
   useEffect(() => {
     supabase.from('properties').select('id, name, property_contracts(*)').eq('legacy', false).order('name').then(({ data }) => { setRows((data ?? []) as unknown as Row[]); setLoading(false) })
   }, [])
-  if (loading) return <p className="muted">加载中…</p>
+  if (loading) return <Loading />
   return (
     <div>
       <h1>合同财务</h1>
