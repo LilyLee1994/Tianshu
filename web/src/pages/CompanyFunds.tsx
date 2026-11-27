@@ -5,8 +5,9 @@ import { coveredAssistantIds } from '../lib/cover'
 import { today } from '../lib/ui'
 
 const PLATFORMS = ['Airbnb', 'Booking.com', 'Vrbo', '直订', '线下', '其他']
-const KINDS = ['收款', '退款', '押金收取', '押金退还', '线下转账']
-const OUT_KINDS = ['退款', '押金退还']            // 这两种是支出，金额存成负数
+const KINDS = ['收款', '退款', '押金收取', '押金退还', '线下转账', '平台扣款']
+const OUT_KINDS = ['退款', '押金退还', '平台扣款']  // 这几种是支出，金额存成负数
+const EFFECTS = ['无', '补房东', '扣房东']
 const CATS = ['房费', '清洁费', '早入住', '晚退房', '加人/加晚', '延长入住', '取消订单', '投诉补偿', '预防差评', '索赔', '押金', '其他']
 const PAYERS = ['公司', '房东', '清洁公司', '客人', '平台', '无责任']
 const m = (n: number) => `$${Math.abs(n).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -14,7 +15,7 @@ const m = (n: number) => `$${Math.abs(n).toLocaleString('en-AU', { minimumFracti
 interface Row {
   id: number; property_id: number; occurred_date: string; platform: string; order_ref: string | null; guest_name: string | null
   check_in: string | null; check_out: string | null; kind: string; category: string; amount: number; reason: string | null
-  payer: string | null; affects_owner: boolean; reconciled: boolean
+  payer: string | null; affects_owner: boolean; owner_effect: string; reconciled: boolean
   property: { name: string; assistant_id: string | null } | null
 }
 interface Prop { id: number; name: string; assistant_id: string | null }
@@ -66,10 +67,17 @@ export default function CompanyFunds() {
     if (error) setMsg(error.message); else load()
   }
 
+  const exportCsv = () => {
+    const head = ['日期', '房源', '平台', '客人', '订单号', '入住', '退房', '类型', '类别', '金额', '责任方', '对房东结算', '已对账', '原因']
+    const lines = shown.map((r) => [r.occurred_date, r.property?.name ?? '', r.platform, r.guest_name ?? '', r.order_ref ?? '', r.check_in ?? '', r.check_out ?? '', r.kind, r.category, r.amount, r.payer ?? '', r.owner_effect, r.reconciled ? '是' : '否', r.reason ?? ''])
+    const csv = '\ufeff' + [head, ...lines].map((l) => l.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); a.download = `公司款项${month ? '_' + month : ''}.csv`; a.click()
+  }
+
   return (
     <div>
       <div className="title-row"><h1>公司款项</h1><button onClick={() => setEdit('new')}>+ 新增款项</button></div>
-      <p className="muted small">记录每一笔和订单相关的收款、退款、押金、线下转账。退款和退押金记为支出；“影响房东结算”选是的，月底结算时要计入。</p>
+      <p className="muted small">记录每一笔和订单相关的收款、退款、押金、线下转账。退款、退押金、平台扣款记为支出。“对房东结算”选“补房东”或“扣房东”的，会自动计入当月房东结算（选“无”表示公司自己消化，或已在 Hostaway 订单里改好）。</p>
       <div className="btn-row" style={{ marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
         <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} title="按日期的月份筛选" />
         <select value={platform} onChange={(e) => setPlatform(e.target.value)}><option value="">全部平台</option>{PLATFORMS.map((x) => <option key={x}>{x}</option>)}</select>
@@ -77,6 +85,7 @@ export default function CompanyFunds() {
         <select value={rec} onChange={(e) => setRec(e.target.value)}><option value="">对账：全部</option><option value="no">未对账</option><option value="yes">已对账</option></select>
         <input placeholder="搜索房源、客人、订单号、原因" value={q} onChange={(e) => setQ(e.target.value)} style={{ minWidth: 240 }} />
         {month && <button className="ghost" onClick={() => setMonth('')}>清除月份</button>}
+        <button className="ghost" onClick={exportCsv}>导出 CSV</button>
       </div>
       <p className="muted small" style={{ margin: '0 0 8px' }}>
         {shown.length} 条 · 收入 <span style={{ color: '#1f6b34' }}>{m(inn)}</span> · 支出 <span style={{ color: '#a3271c' }}>{m(out)}</span> · 合计 {inn - out < 0 ? '−' : ''}{m(inn - out)} · 未对账 {todo} 条
@@ -84,7 +93,7 @@ export default function CompanyFunds() {
       {msg && <p className="err">{msg}</p>}
       <div className="table-wrap">
         <table style={{ minWidth: 1100 }}>
-          <thead><tr><th>日期</th><th>房源</th><th>平台</th><th>客人 / 订单号</th><th>类型 · 类别</th><th style={{ textAlign: 'right' }}>金额</th><th>责任方</th><th>影响结算</th><th>已对账</th><th>原因</th><th></th></tr></thead>
+          <thead><tr><th>日期</th><th>房源</th><th>平台</th><th>客人 / 订单号</th><th>类型 · 类别</th><th style={{ textAlign: 'right' }}>金额</th><th>责任方</th><th>对房东结算</th><th>已对账</th><th>原因</th><th></th></tr></thead>
           <tbody>{shown.map((r) => (
             <tr key={r.id}>
               <td style={{ whiteSpace: 'nowrap' }}>{r.occurred_date.slice(5)}</td><td>{r.property?.name}</td><td>{r.platform}</td>
@@ -92,7 +101,7 @@ export default function CompanyFunds() {
               <td style={{ whiteSpace: 'nowrap' }}>{r.kind} · {r.category}</td>
               <td style={{ textAlign: 'right', whiteSpace: 'nowrap', color: r.amount > 0 ? '#1f6b34' : '#a3271c' }}>{r.amount > 0 ? '+' : '−'}{m(Number(r.amount))}</td>
               <td>{r.payer ?? '—'}</td>
-              <td>{r.affects_owner ? <span className="chip amber" style={{ marginLeft: 0 }}>是</span> : '—'}</td>
+              <td>{r.owner_effect !== '无' ? <span className="chip amber" style={{ marginLeft: 0 }}>{r.owner_effect}</span> : '—'}</td>
               <td>{canReconcile ? <input type="checkbox" style={{ width: 'auto', minHeight: 0 }} checked={r.reconciled} onChange={() => toggleRec(r)} /> : r.reconciled ? '✓' : '—'}</td>
               <td style={{ maxWidth: 260 }}>{r.reason ?? ''}</td>
               <td><button className="task-btn" onClick={() => setEdit(r)}>编辑</button></td>
@@ -111,7 +120,7 @@ function EditModal({ row, props, isAdmin, onClose, onSaved }: { row: Row | null;
     property_id: row ? String(row.property_id) : '', occurred_date: row?.occurred_date ?? today(), platform: row?.platform ?? 'Airbnb',
     order_ref: row?.order_ref ?? '', guest_name: row?.guest_name ?? '', check_in: row?.check_in ?? '', check_out: row?.check_out ?? '',
     kind: row?.kind ?? '收款', category: row?.category ?? '房费', amount: row ? String(Math.abs(Number(row.amount))) : '',
-    payer: row?.payer ?? '', affects_owner: row?.affects_owner ?? false, reason: row?.reason ?? '',
+    payer: row?.payer ?? '', owner_effect: row?.owner_effect ?? '无', reason: row?.reason ?? '',
   })
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -124,7 +133,7 @@ function EditModal({ row, props, isAdmin, onClose, onSaved }: { row: Row | null;
     const body = {
       property_id: Number(f.property_id), occurred_date: f.occurred_date, platform: f.platform, order_ref: f.order_ref.trim() || null, guest_name: f.guest_name.trim() || null,
       check_in: f.check_in || null, check_out: f.check_out || null, kind: f.kind, category: f.category,
-      amount: OUT_KINDS.includes(f.kind) ? -Math.abs(n) : Math.abs(n), payer: f.payer || null, affects_owner: f.affects_owner, reason: f.reason.trim() || null,
+      amount: OUT_KINDS.includes(f.kind) ? -Math.abs(n) : Math.abs(n), payer: f.payer || null, owner_effect: f.owner_effect, affects_owner: f.owner_effect !== '无', reason: f.reason.trim() || null,
     }
     const { error } = row ? await supabase.from('ledger').update(body).eq('id', row.id) : await supabase.from('ledger').insert(body)
     setBusy(false)
@@ -156,7 +165,8 @@ function EditModal({ row, props, isAdmin, onClose, onSaved }: { row: Row | null;
           <label>责任方<select value={f.payer} onChange={(e) => set('payer', e.target.value)}><option value="">不填</option>{PAYERS.map((x) => <option key={x}>{x}</option>)}</select></label>
         </div>
         <p className="muted small" style={{ margin: 0 }}>这一笔记为 <b style={{ color: out ? '#a3271c' : '#1f6b34' }}>{out ? '支出' : '收入'}</b>。</p>
-        <label className="check"><input type="checkbox" checked={f.affects_owner} onChange={(e) => set('affects_owner', e.target.checked)} />影响房东结算（月底结算时要计入）</label>
+        <label>对房东结算<select value={f.owner_effect} onChange={(e) => set('owner_effect', e.target.value)}>{EFFECTS.map((x) => <option key={x}>{x}</option>)}</select></label>
+        <p className="muted small" style={{ margin: 0 }}>无＝公司自己消化，或已在 Hostaway 订单里改好；补房东＝要多给房东这笔钱；扣房东＝要从房东款里扣掉这笔钱。金额都按上面填的数计算。</p>
         <label>原因说明<input value={f.reason} onChange={(e) => set('reason', e.target.value)} placeholder="例如：客人投诉，退部分房费" /></label>
         {err && <div className="err">{err}</div>}
         <div className="btn-row">
