@@ -185,3 +185,8 @@ td .ghost, td button.ghost { white-space: nowrap; }
 
 .ob-card.focus-card { box-shadow: 0 0 0 3px #f2c94c; animation: card-fade 4s ease-out 1.5s forwards; }
 @keyframes card-fade { to { box-shadow: 0 0 0 0 transparent; } }
+
+/* 状态标签：不被拉高成大胶囊，不换行；按钮行内垂直居中 */
+.chip { white-space: nowrap; line-height: 1.5; align-self: center; flex: 0 0 auto; }
+.btn-row { align-items: center; flex-wrap: wrap; }
+td .btn-row { flex-wrap: nowrap; }
