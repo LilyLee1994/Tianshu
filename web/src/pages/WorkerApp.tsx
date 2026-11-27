@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import Loading from '../lib/Loading'
 import { useAuth, ROLE_LABEL } from '../lib/auth'
 import { callApi } from '../lib/api'
 import { uploadPhotos } from '../lib/photos'
@@ -49,7 +50,7 @@ export default function WorkerApp() {
         const list = (
           <>
             {!loading && items.length > 0 && <p className="muted small" style={{ margin: 0 }}>排序：当天入住的最紧急，排第一；然后是次日入住的，再是其他紧急；其余按退房日从早到晚，已完成的放最后。</p>}
-            {loading && <p className="muted">加载中…</p>}
+            {loading && <Loading />}
             {!loading && !items.length && <p className="muted pad">这里没有任务。助理派单后会出现在这里。</p>}
             {[...items].sort((a, b) => rank(a) - rank(b) || (a.planned_date ?? '9999').localeCompare(b.planned_date ?? '9999')).map((o) => (
             <button key={o.id} className={`${o.urgent && o.status !== '已完成' ? (o.urgent_label === '当天入住' ? 'mcard urgent now' : 'mcard urgent') : 'mcard'}${wide && open === o.id ? ' on' : ''}`} onClick={() => setOpen(o.id)}>
@@ -106,7 +107,7 @@ function OrderView({ id, isClean, onBack, onChanged, wide }: { id: number; isCle
     setBusy(false)
   }
 
-  if (!d) return <div>{!wide && <button className="back" onClick={onBack}>← 返回列表</button>}{err ? <div className="err-box">{err}</div> : <p className="muted">加载中…</p>}</div>
+  if (!d) return <div>{!wide && <button className="back" onClick={onBack}>← 返回列表</button>}{err ? <div className="err-box">{err}</div> : <Loading />}</div>
   const st = d.order.status
   // 每次拍照或选图都是“加进去”，不会覆盖前面的：连续点“拍照”就是连拍，“从相册选”可以一次选多张
   const addFiles = (list: FileList | null) => {
@@ -140,6 +141,7 @@ function OrderView({ id, isClean, onBack, onChanged, wide }: { id: number; isCle
 
   return (
     <div>
+      {busy && <Loading text="正在提交，照片较多时请稍等" />}
       {!wide && <button className="back" onClick={onBack}>← 返回列表</button>}
       <section className="card">
         <h2>{d.property.name} {d.order.urgent && <span className="chip amber">紧急</span>}</h2>
