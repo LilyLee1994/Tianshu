@@ -16,23 +16,14 @@ interface Line {
 const GST = 0.1
 const sgn = (n: number) => (!n ? <span className="muted">—</span> : <span style={{ color: n > 0 ? '#0f7a4a' : '#c0392b', whiteSpace: 'nowrap' }}>{n > 0 ? '+' : '−'}{money(Math.abs(n))}</span>)
 
-// 房源盈亏：一套房在这段时间里，公司赚了多少服务费，花了多少维修、赔款等
-export default function PropertyProfit() {
-  const [q, setQ] = useState('')
-  const [lines, setLines] = useState<Line[]>([])
-  const [loading, setLoading] = useState(true)
-  const [msg, setMsg] = useState('')
-  const [open, setOpen] = useState<Line | null>(null)
-
-  const load = useCallback(async () => {
-    setLoading(true); setMsg('')
+async function fetchLines(pid?: number): Promise<{ lines: Line[]; error?: string }> {
     const [st, lg, wo] = await Promise.all([
-      supabase.from('owner_statements').select('property_id, period_start, period_end, commission, reservations, nights, property:properties(name)').limit(20000),
-      supabase.from('ledger').select('id, occurred_date, reason, guest_name, property_id, kind, category, amount, owner_effect, order_adjusted_at').limit(50000),
-      supabase.from('work_orders').select('id, property_id, amount, description, done_date').eq('type', '维修').eq('status', '已完成').eq('payer', '公司').limit(50000),
+      (pid ? supabase.from('owner_statements').select('property_id, period_start, period_end, commission, reservations, nights, property:properties(name)').eq('property_id', pid) : supabase.from('owner_statements').select('property_id, period_start, period_end, commission, reservations, nights, property:properties(name)')).limit(20000),
+      (pid ? supabase.from('ledger').select('id, occurred_date, reason, guest_name, property_id, kind, category, amount, owner_effect, order_adjusted_at').eq('property_id', pid) : supabase.from('ledger').select('id, occurred_date, reason, guest_name, property_id, kind, category, amount, owner_effect, order_adjusted_at')).limit(50000),
+      (pid ? supabase.from('work_orders').select('id, property_id, amount, description, done_date').eq('property_id', pid) : supabase.from('work_orders').select('id, property_id, amount, description, done_date')).eq('type', '维修').eq('status', '已完成').eq('payer', '公司').limit(50000),
     ])
     const err = st.error ?? lg.error ?? wo.error
-    if (err) { setMsg(`读取出错：${err.message}`); setLoading(false); return }
+    if (err) return { lines: [], error: `读取出错：${err.message}` }
     const m = new Map<number, Line & { ms: Set<string> }>()
     const get = (id: number, name = '') => { let l = m.get(id); if (!l) { l = { id, name, months: 0, orders: 0, nights: 0, fee: 0, markup: 0, claims: 0, repair: 0, cleaner: 0, other: 0, profit: 0, items: [], ms: new Set() }; m.set(id, l) } if (name) l.name = name; return l }
     for (const s of (st.data ?? []) as unknown as St[]) {
@@ -57,7 +48,22 @@ export default function PropertyProfit() {
     for (const p of names.data ?? []) get(p.id as number, p.name as string)
     const out = [...m.values()].map((l) => ({ ...l, months: l.ms.size, profit: l.fee + l.markup + l.claims + l.repair + l.cleaner + l.other }))
     out.sort((a, b) => b.profit - a.profit)
-    setLines(out); setLoading(false)
+    return { lines: out }
+}
+
+// 房源盈亏：一套房在这段时间里，公司赚了多少服务费，花了多少维修、赔款等
+export default function PropertyProfit() {
+  const [q, setQ] = useState('')
+  const [lines, setLines] = useState<Line[]>([])
+  const [loading, setLoading] = useState(true)
+  const [msg, setMsg] = useState('')
+  const [open, setOpen] = useState<Line | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true); setMsg('')
+    const r = await fetchLines()
+    if (r.error) setMsg(r.error); else setLines(r.lines)
+    setLoading(false)
   }, [])
   useEffect(() => { load() }, [load])
 
@@ -127,5 +133,26 @@ function Detail({ line, onClose }: { line: Line; onClose: () => void }) {
         {!line.items.length && <p className="muted">这套房还没有收支记录。</p>}
       </div>
     </div>
+  )
+}
+
+// 房源档案里的“盈亏明细”按钮：点开就是这套房的收支明细弹窗
+export function ProfitButton({ propertyId, name }: { propertyId: number; name: string }) {
+  const [line, setLine] = useState<Line | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const go = async () => {
+    setBusy(true); setErr('')
+    const r = await fetchLines(propertyId)
+    setBusy(false)
+    if (r.error) { setErr(r.error); return }
+    setLine(r.lines[0] ?? { id: propertyId, name, months: 0, orders: 0, nights: 0, fee: 0, markup: 0, claims: 0, repair: 0, cleaner: 0, other: 0, profit: 0, items: [] })
+  }
+  return (
+    <>
+      <button className="ghost" disabled={busy} onClick={go}>{busy ? '读取中…' : '盈亏明细'}</button>
+      {err && <span className="error small">{err}</span>}
+      {line && <Detail line={{ ...line, name: line.name || name }} onClose={() => setLine(null)} />}
+    </>
   )
 }
