@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { badOne } from './Reviews'
-import { today } from '../lib/ui'
+import { today, cleanDesc } from '../lib/ui'
 
 type Note = { id: number; note: string; created_at: string; author: { name: string } | null }
 type Item = { key: string; tag: string; text: string }
@@ -31,7 +31,7 @@ export default function HandoverCard({ propertyId, assistantId }: { propertyId: 
     ])
     if (n.error) setErr(`交接备注读取失败：${n.error.message}（是否已运行 052 迁移？）`); else setNotes((n.data ?? []) as unknown as Note[])
     const out: Item[] = []
-    for (const x of (o.data ?? []) as { id: number; type: string; description: string | null; status: string }[]) out.push({ key: `o${x.id}`, tag: `工单 · ${x.status}`, text: `${x.type}${x.description ? '：' + x.description : ''}` })
+    for (const x of (o.data ?? []) as { id: number; type: string; description: string | null; status: string }[]) out.push({ key: `o${x.id}`, tag: `工单 · ${x.status}`, text: `${x.type}${x.description ? '：' + cleanDesc(x.description) : ''}` })
     for (const x of (c.data ?? []) as { id: number; content: string; status: string }[]) out.push({ key: `c${x.id}`, tag: `索赔 · ${x.status}`, text: x.content })
     const acts = new Map(((ra.data ?? []) as { review_id: number; status: string; result: string | null }[]).map((a) => [a.review_id, a]))
     for (const x of (rv.data ?? []) as { id: number; channel_name: string | null; rating: number; reviewed_at: string }[]) {

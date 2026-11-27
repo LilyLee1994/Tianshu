@@ -2,7 +2,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import Loading from '../lib/Loading'
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { chipOf, money, today } from '../lib/ui'
+import { chipOf, money, today, cleanDesc } from '../lib/ui'
 import { signedUrls } from '../lib/photos'
 import { useAuth } from '../lib/auth'
 import { coveredAssistantIds } from '../lib/cover'
@@ -148,7 +148,7 @@ function OrderRow({ o, workers, onUpdate, focus, hideType }: { o: Order; workers
     <tr id={`wo-${o.id}`} className={focus ? 'focus-row' : undefined}>
       <td>{o.created_at.slice(5, 10).replace('-', '/')}</td>
       <td><b>{o.property?.name}</b>{o.urgent && <span className="chip amber">次日入住</span>}</td>
-      {!hideType && <td>{o.type}</td>}<td>{o.description ?? '—'}{o.damage_report && <div className="muted small">清洁上报损坏：{o.damage_report} <button className="task-btn" onClick={() => nav(`/claims?property=${o.property_id}`)}>已转入索赔，去查看</button></div>}</td><td>{who}</td>
+      {!hideType && <td>{o.type}</td>}<td>{cleanDesc(o.description) || '—'}{o.damage_report && <div className="muted small">清洁上报损坏：{o.damage_report} <button className="task-btn" onClick={() => nav(`/claims?property=${o.property_id}`)}>已转入索赔，去查看</button></div>}</td><td>{who}</td>
       <td><span className={chipOf(o.status)}>{o.status}</span></td>
       <td>{o.type === '清洁' ? '—' : o.type === '维修' && o.payer === '房东' && o.owner_charge != null && Number(o.owner_charge) !== Number(o.amount) ? <>成本 {money(o.amount)}<div className="muted small">收房东 {money(o.owner_charge)}（赚 {money(Number(o.owner_charge) - Number(o.amount ?? 0))}）</div></> : `${money(o.amount)}（${o.payer}）`}{o.type === '维修' && o.status === '已完成' && <div>{o.settled_at ? <span className="chip green" style={{ marginLeft: 0 }}>已和师傅结算</span> : <span className="muted small">未和师傅结算</span>}</div>}</td>
       <td>{action}{nPics > 0 && <button className="ghost" onClick={showPics}>看照片（{nPics}）</button>}

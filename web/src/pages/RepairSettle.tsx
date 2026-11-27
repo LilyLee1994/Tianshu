@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { money } from '../lib/ui'
+import { money, cleanDesc } from '../lib/ui'
 import { downloadRepairPdf } from '../lib/repairPdf'
 
 interface Row {
@@ -72,14 +72,14 @@ export default function RepairSettle() {
     try {
       const sorted = [...list].sort((a, b) => (a.done_date ?? '').localeCompare(b.done_date ?? ''))
       await downloadRepairPdf(name, `${from} 至 ${to}`, sorted.map((r) => ({
-        date: r.done_date ?? '', property: r.property?.name ?? '', text: (r.description ?? '').replace(/^【索赔#\d+】/, ''), amount: r.amount == null ? null : Number(r.amount),
+        date: r.done_date ?? '', property: r.property?.name ?? '', text: cleanDesc(r.description), amount: r.amount == null ? null : Number(r.amount),
       })))
     } catch (e) { setMsg(`生成 PDF 失败：${e instanceof Error ? e.message : '请重试'}`) }
     setBusy(false)
   }
   const exportCsv = () => {
     const head = ['师傅', '完成日期', '房源', '内容', '给师傅', '谁承担', '收房东', '公司赚', '是否已结算']
-    const lines = picked.map((r) => [workerOf(r), r.done_date ?? '', r.property?.name ?? '', r.description ?? '', r.amount ?? '', r.payer, r.payer === '房东' ? (r.owner_charge ?? r.amount ?? '') : '', r.payer === '房东' && r.amount != null ? Number(r.owner_charge ?? r.amount) - Number(r.amount) : '', r.settled_at ? '已结算' : '未结算'])
+    const lines = picked.map((r) => [workerOf(r), r.done_date ?? '', r.property?.name ?? '', cleanDesc(r.description), r.amount ?? '', r.payer, r.payer === '房东' ? (r.owner_charge ?? r.amount ?? '') : '', r.payer === '房东' && r.amount != null ? Number(r.owner_charge ?? r.amount) - Number(r.amount) : '', r.settled_at ? '已结算' : '未结算'])
     const sum = (i: number) => lines.reduce((n, l) => n + (Number(l[i]) || 0), 0)
     lines.push(['合计', '', '', `共 ${lines.length} 单`, sum(4), '', sum(6), sum(7), ''])
     const csv = '﻿' + [head, ...lines].map((l) => l.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
@@ -124,7 +124,7 @@ export default function RepairSettle() {
               <tbody>{g.list.map((r) => (
                 <tr key={r.id}>
                   <td><input type="checkbox" style={{ width: 18, height: 18, minHeight: 0 }} checked={sel.has(r.id)} onChange={(e) => toggle([r.id], e.target.checked)} /></td>
-                  <td style={{ whiteSpace: 'nowrap' }}>{r.done_date?.slice(5)}</td><td>{r.property?.name}</td><td>{r.description ?? ''}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>{r.done_date?.slice(5)}</td><td>{r.property?.name}</td><td>{cleanDesc(r.description)}</td>
                   <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{r.amount == null ? <span className="muted">未填</span> : money(r.amount)}</td>
                   <td>{r.payer}</td>
                   <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{r.payer === '房东' ? money(r.owner_charge ?? r.amount) : <span className="muted">—</span>}</td>

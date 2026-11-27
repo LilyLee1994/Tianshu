@@ -11,3 +11,6 @@ export const money = (v: number | string | null | undefined) => {
   const n = Number(v)
   return Number.isNaN(n) ? '—' : `$${n.toFixed(2).replace(/\.00$/, '')}`
 }
+
+// 工单描述里系统自动加的“【索赔#17】”标记只是内部用来防重复，显示时去掉
+export const cleanDesc = (d: string | null | undefined) => (d ?? '').replace(/^【索赔#\d+】/, '')
