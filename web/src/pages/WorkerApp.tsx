@@ -147,7 +147,7 @@ function OrderView({ id, isClean, onBack, onChanged, wide }: { id: number; isCle
       <section className="card">
         <h2>{d.property.name} {d.order.urgent && <span className="chip amber">紧急</span>}</h2>
         <p>{d.order.type} · {cleanDesc(d.order.description)}</p>
-        {!!d.notes?.length && <div style={{ background: "#fff8e6", borderRadius: 8, padding: "8px 10px", margin: "8px 0" }}>{d.notes.map((n) => <div key={n.label} style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: '2px 0' }}><b>{n.label}：</b>{n.text}</div>)}</div>
+        {!!d.notes?.length && <div style={{ background: "#fff8e6", borderRadius: 8, padding: "8px 10px", margin: "8px 0" }}>{d.notes.map((n) => <div key={n.label} style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: '2px 0' }}><b>{n.label}：</b>{n.text}</div>)}</div>}
         <span className={chipOf(st)} style={{ marginLeft: 0 }}>{st}</span>
         {d.order.urgent && st !== '已完成' && <p className="warn">{d.order.urgent_text ?? '紧急：请优先安排。'}{isClean && ' 进门发现损坏要马上上报，不要等到清洁结束。'}</p>}
         {d.property.address && <p><b>地址：</b>{d.property.address}</p>}
