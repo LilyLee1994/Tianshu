@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { coveredAssistantIds } from '../lib/cover'
 import { today } from '../lib/ui'
 
-const PLATFORMS = ['Airbnb', 'Booking.com', 'Vrbo', '直订', '线下', '其他']
+const PLATFORMS = ['Airbnb', 'Booking.com', 'Vrbo', 'Terri Scheer', 'Turvi', '直订', '线下', '其他']
 const KINDS = ['收款', '退款', '押金收取', '押金退还', '线下转账', '平台扣款']
 const OUT_KINDS = ['退款', '押金退还', '平台扣款']  // 这几种是支出，金额存成负数
 const EFFECTS = ['无', '补房东', '扣房东']
@@ -15,13 +16,14 @@ const m = (n: number) => `$${Math.abs(n).toLocaleString('en-AU', { minimumFracti
 interface Row {
   id: number; property_id: number; occurred_date: string; platform: string; order_ref: string | null; guest_name: string | null
   check_in: string | null; check_out: string | null; kind: string; category: string; amount: number; reason: string | null
-  payer: string | null; affects_owner: boolean; owner_effect: string; reconciled: boolean
+  payer: string | null; affects_owner: boolean; owner_effect: string; reconciled: boolean; claim_id?: number | null
   property: { name: string; assistant_id: string | null } | null
 }
 interface Prop { id: number; name: string; assistant_id: string | null }
 
 export default function CompanyFunds() {
   const { profile } = useAuth()
+  const nav = useNavigate()
   const isAssistant = profile?.role === 'assistant'
   const isAdmin = profile?.role === 'admin'
   const canReconcile = isAdmin || profile?.role === 'finance'
@@ -120,7 +122,7 @@ export default function CompanyFunds() {
               <td>{r.owner_effect !== '无' ? <span className="chip amber" style={{ marginLeft: 0 }}>{r.owner_effect}</span> : '—'}</td>
               <td>{canReconcile ? <input type="checkbox" style={{ width: 'auto', minHeight: 0 }} checked={r.reconciled} onChange={() => toggleRec(r)} /> : r.reconciled ? '✓' : '—'}</td>
               <td style={{ maxWidth: 260 }}>{r.reason ?? ''}</td>
-              <td><button className="task-btn" onClick={() => setEdit(r)}>编辑</button></td>
+              <td>{r.claim_id ? <button className="task-btn" onClick={() => nav(`/claims?id=${r.claim_id}`)}>来自索赔</button> : <button className="task-btn" onClick={() => setEdit(r)}>编辑</button>}</td>
             </tr>
           ))}</tbody>
         </table>
