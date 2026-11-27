@@ -1,4 +1,5 @@
 import { adminClient, authenticate, sydneyToday, type Req, type Res } from './_lib.js'
+import { notifyGroup } from './_notify.js'
 import { hostawayAll, hostawayGet, hostawayToken } from './_hostaway.js'
 
 // Hostaway 每日同步。一次调用最多跑约 45 秒，做不完就把进度存进数据库，下次调用接着做：
@@ -245,7 +246,7 @@ async function detectOrderAlerts(db: ReturnType<typeof adminClient>, today: stri
 // 自动派清洁：今天和明天退房的订单，各生成一张清洁单。
 // 房东自己做清洁的房源跳过；只有一家启用的清洁公司账号时直接派给它，否则进“待派单”。
 async function autoCleaning(db: ReturnType<typeof adminClient>, today: string) {
-  const { data: pr } = await db.from('properties').select('id, cleaning_by')
+  const { data: pr } = await db.from('properties').select('id, name, cleaning_by')
   const ownerCleans = new Set((pr ?? []).filter((p) => p.cleaning_by === '房东自己').map((p) => p.id as number))
   const { data: accts } = await db.from('profiles').select('id').eq('role', 'cleaner').eq('active', true)
   const only = accts?.length === 1 ? (accts[0].id as string) : null
@@ -265,7 +266,15 @@ async function autoCleaning(db: ReturnType<typeof adminClient>, today: string) {
       planned_date: dep, urgent, reservation_id: r.id, assigned_to: only, status: only ? '已派单' : '待派单',
     }
   })
-  if (fresh.length) await db.from('work_orders').insert(fresh)
+  if (fresh.length) {
+    await db.from('work_orders').insert(fresh)
+    // 新生成的清洁单发企业微信：已自动派给清洁公司的 → 清洁群；没人可派的 → 助理群提醒去派单。失败不影响同步
+    const nm = new Map((pr ?? []).map((p) => [p.id as number, String(p.name ?? '')]))
+    const line = (o: (typeof fresh)[number]) => `${o.urgent ? '【紧急】' : ''}${nm.get(o.property_id as number) ?? ''}，退房 ${String(o.planned_date).slice(5)}`
+    const sent = fresh.filter((o) => o.assigned_to), wait = fresh.filter((o) => !o.assigned_to)
+    if (sent.length) await notifyGroup(db, 'cleaner', `新增 ${sent.length} 张清洁单`, sent.map(line))
+    if (wait.length) await notifyGroup(db, 'assistant', `有 ${wait.length} 张清洁单待派单`, wait.map(line))
+  }
 
   // 订单后来取消、清洁单还没做的，标记已取消
   const { data: pend } = await db.from('work_orders').select('id, reservation_id').eq('type', '清洁').not('reservation_id', 'is', null).in('status', ['待派单', '已派单'])
