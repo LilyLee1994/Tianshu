@@ -218,8 +218,6 @@ export function EditModal({ row, props, isAdmin, onClose, onSaved, defaultProper
             <label>客人姓名<input value={f.guest_name} onChange={(e) => set('guest_name', e.target.value)} /></label>
             <label>订单号<input value={f.order_ref} onChange={(e) => set('order_ref', e.target.value)} /></label>
           </>}
-          <label>入住日期<input type="date" value={f.check_in} onChange={(e) => set('check_in', e.target.value)} /></label>
-          <label>退房日期<input type="date" value={f.check_out} onChange={(e) => set('check_out', e.target.value)} /></label>
           <label>款项类型<select value={f.kind} onChange={(e) => { set('kind', e.target.value); if (e.target.value === '清洁公司费用' && !['额外清洁', '跑腿'].includes(f.category)) set('category', '额外清洁') }}><optgroup label="收入">{KINDS.filter((x) => !OUT_KINDS.includes(x)).map((x) => <option key={x}>{x}</option>)}</optgroup><optgroup label="支出">{OUT_KINDS.map((x) => <option key={x}>{x}</option>)}</optgroup></select></label>
           <label>类别<select value={f.category} onChange={(e) => set('category', e.target.value)}>{CATS.map((x) => <option key={x}>{x}</option>)}</select></label>
           <label>金额（$，填正数）<input inputMode="decimal" value={f.amount} onChange={(e) => set('amount', e.target.value)} /></label>
