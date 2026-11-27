@@ -352,7 +352,7 @@ function Detail({ row: r, canEdit, isAdmin, onEdit, onChanged }: { row: Row; can
       <dl>
         <dt>地址</dt><dd>{dash(r.address)}</dd>
         <dt>区域</dt><dd>{dash(r.region)}</dd>
-        <dt>Hostaway ID</dt><dd>{r.hostaway_id ?? <span className="muted">未关联{isAdmin ? '（点编辑填写）' : '（请管理员填写）'}</span>}</dd>
+        <dt>Hostaway ID</dt><dd>{r.hostaway_id ?? <span className="muted">未关联（点编辑填写）</span>}</dd>
         <dt>主责助理</dt><dd>{dash(r.assistant?.name)}</dd>
         <dt>清洁由谁做</dt><dd>{r.cleaning_by === '房东自己' ? '房东自己' : 'Alisa'}</dd>
         <dt>户型</dt><dd>{dash(d?.bedrooms)} 房 {dash(d?.bathrooms)} 卫 · 可住 {dash(d?.max_guests)} 人</dd>
@@ -418,6 +418,10 @@ function EditForm({ row, isAdmin, assistants, onCancel, onSaved }: { row: Row; i
     if (isAdmin) jobs.push(supabase.from('properties').update({
       name: p.name.trim(), address: txt(p.address), region: txt(p.region), assistant_id: p.assistant_id || null, airbnb_url: txt(p.airbnb_url), booking_url: txt(p.booking_url), hostaway_id: num(p.hostaway_id), cleaning_by: p.cleaning_by, commission_rate: Math.min(100, Math.max(0, Number(p.commission) || 15)) / 100,
     }).eq('id', row.id).select('id'))
+    if (!isAdmin && num(p.hostaway_id) !== (row.hostaway_id ?? null)) {
+      const { error: he } = await supabase.rpc('set_hostaway_id', { p_property: row.id, p_id: num(p.hostaway_id) })
+      if (he) { setBusy(false); setErr(he.code === '42883' || he.code === 'PGRST202' ? '保存失败：还没运行 057 迁移。' : `Hostaway ID 保存失败：${he.message}`); return }
+    }
     const res = await Promise.all(jobs)
     setBusy(false)
     const bad = res.find((r) => r.error || !r.data?.length)
@@ -436,6 +440,7 @@ function EditForm({ row, isAdmin, assistants, onCancel, onSaved }: { row: Row; i
     <section className="card">
       <h2>编辑 {row.name}</h2>
       <div className="form-grid">
+        {f('Hostaway 房源 ID（填了才能同步订单、日历和差评；在 Hostaway 房源页网址里能找到）', p.hostaway_id, (v) => setP({ ...p, hostaway_id: v }))}
         {isAdmin && <>
           {f('房源名称', p.name, (v) => setP({ ...p, name: v }))}
           {f('地址', p.address, (v) => setP({ ...p, address: v }))}
@@ -445,7 +450,6 @@ function EditForm({ row, isAdmin, assistants, onCancel, onSaved }: { row: Row; i
           {f('佣金比例（%，房东结算用）', p.commission, (v) => setP({ ...p, commission: v }))}
           {f('Airbnb 房源链接', p.airbnb_url, (v) => setP({ ...p, airbnb_url: v }))}
           {f('Booking 房源链接', p.booking_url, (v) => setP({ ...p, booking_url: v }))}
-          {f('Hostaway 房源 ID（填了才能同步订单、日历和差评；在 Hostaway 房源页网址里能找到）', p.hostaway_id, (v) => setP({ ...p, hostaway_id: v }))}
           <label>主责助理<select value={p.assistant_id} onChange={(e) => setP({ ...p, assistant_id: e.target.value })}>
             <option value="">未分配</option>{assistants.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select></label>
