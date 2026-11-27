@@ -78,8 +78,10 @@ export default function RepairSettle() {
     setBusy(false)
   }
   const exportCsv = () => {
-    const head = ['师傅', '完成日期', '房源', '内容', '金额', '谁承担', '是否已结算']
-    const lines = picked.map((r) => [workerOf(r), r.done_date ?? '', r.property?.name ?? '', r.description ?? '', r.amount ?? '', r.payer, r.settled_at ? '已结算' : '未结算'])
+    const head = ['师傅', '完成日期', '房源', '内容', '给师傅', '谁承担', '收房东', '公司赚', '是否已结算']
+    const lines = picked.map((r) => [workerOf(r), r.done_date ?? '', r.property?.name ?? '', r.description ?? '', r.amount ?? '', r.payer, r.payer === '房东' ? (r.owner_charge ?? r.amount ?? '') : '', r.payer === '房东' && r.amount != null ? Number(r.owner_charge ?? r.amount) - Number(r.amount) : '', r.settled_at ? '已结算' : '未结算'])
+    const sum = (i: number) => lines.reduce((n, l) => n + (Number(l[i]) || 0), 0)
+    lines.push(['合计', '', '', `共 ${lines.length} 单`, sum(4), '', sum(6), sum(7), ''])
     const csv = '﻿' + [head, ...lines].map((l) => l.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); a.download = `维修结算_${from}至${to}.csv`; a.click()
   }
