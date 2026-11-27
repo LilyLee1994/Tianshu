@@ -12,7 +12,7 @@ interface Order {
   id: number; property_id: number; type: OType; executor: string | null; description: string | null
   assigned_to: string | null; vendor_name: string | null; planned_date: string | null; done_date: string | null
   status: string; amount: number | null; payer: string; owner_notified: boolean; urgent: boolean; created_at: string
-  photos: string[]; damage_photos: string[]; damage_report: string | null; damage_handled?: boolean
+  photos: string[]; damage_photos: string[]; damage_report: string | null; damage_handled?: boolean; settled_at?: string | null
   property: { name: string; assistant_id: string | null } | null; worker: { name: string } | null
 }
 interface Worker { id: string; name: string; role: string }
@@ -24,9 +24,12 @@ export const flowOf = (type: OType, exec: string | null) => {
   if (type === '除草' || type === '除虫') return ['待派单', '已派单', '待确认费用', '已完成']
   return ['待派单', '已派单', '已接单', '待确认费用', '已完成']
 }
-const FILTERS = ['全部', '清洁', '维修', '除草', '除虫']
+const FILTERS = ['全部', '清洁', '除草', '除虫']                       // 工单页（维修单在“维修”页）
+const REPAIR_FILTERS = ['全部', '待派单', '进行中', '待确认费用', '已完成']   // 维修页
 
-export default function Orders() {
+export default function Orders({ scope = 'other' }: { scope?: 'repair' | 'other' }) {
+  const isRepair = scope === 'repair'
+  const nav = useNavigate()
   const { profile } = useAuth()
   const isAssistant = profile?.role === 'assistant'
   const [cover, setCover] = useState<Set<string>>(new Set())
@@ -63,7 +66,15 @@ export default function Orders() {
     setMsg(ok); load()
   }
 
-  const list = rows.filter((r) => mineAid(r.property?.assistant_id) && (filter === '全部' || r.type === filter || r.id === focusId))
+  const inScope = (r: Order) => (r.type === '维修') === isRepair
+  const matchFilter = (r: Order) => filter === '全部' || (isRepair ? (filter === '进行中' ? ['已派单', '已接单'].includes(r.status) : r.status === filter) : r.type === filter)
+  const list = rows.filter((r) => inScope(r) && mineAid(r.property?.assistant_id) && (matchFilter(r) || r.id === focusId))
+  // 旧链接 /orders?id=（维修单）和 /repairs?id=（其他工单）互相跳到对的页面
+  useEffect(() => {
+    if (!focusId || loading) return
+    const hit = rows.find((r) => r.id === focusId)
+    if (hit && !inScope(hit)) nav(`${isRepair ? '/orders' : '/repairs'}?id=${focusId}`, { replace: true })
+  }, [focusId, loading, rows]) // eslint-disable-line react-hooks/exhaustive-deps
   // 从总览点进来：滚到这张工单并高亮
   useEffect(() => {
     if (!focusId || loading) return
@@ -73,25 +84,25 @@ export default function Orders() {
 
   return (
     <div>
-      <div className="title-row"><h1>工单</h1><button className="primary small-btn" onClick={() => setAdding(true)}>＋ 新建工单</button></div>
-      <div className="pills">{FILTERS.map((f) => <button key={f} className={f === filter ? 'pill on' : 'pill'} onClick={() => setFilter(f)}>{f}</button>)}</div>
+      <div className="title-row">{isRepair ? <h2 style={{ margin: 0 }}>维修单</h2> : <h1>工单</h1>}<button className="primary small-btn" onClick={() => setAdding(true)}>{isRepair ? '＋ 新建维修单' : '＋ 新建工单'}</button></div>
+      <div className="pills">{(isRepair ? REPAIR_FILTERS : FILTERS).map((f) => <button key={f} className={f === filter ? 'pill on' : 'pill'} onClick={() => setFilter(f)}>{f}</button>)}</div>
       {msg && <div className="ok">{msg}</div>}
       {err && <div className="err-box">{err}</div>}
       <div className="table-wrap">
         <table style={{ minWidth: 980 }}>
-          <thead><tr><th>日期</th><th>房源</th><th>类型</th><th>内容</th><th>执行</th><th>状态</th><th>费用</th><th>操作</th></tr></thead>
+          <thead><tr><th>日期</th><th>房源</th>{!isRepair && <th>类型</th>}<th>内容</th><th>{isRepair ? '师傅' : '执行'}</th><th>状态</th><th>费用</th><th>操作</th></tr></thead>
           <tbody>
-            {list.map((o) => <OrderRow key={o.id} o={o} workers={workers} onUpdate={update} focus={o.id === focusId} />)}
+            {list.map((o) => <OrderRow key={o.id} o={o} workers={workers} onUpdate={update} focus={o.id === focusId} hideType={isRepair} />)}
           </tbody>
         </table>
-        {!list.length && <p className="muted pad">还没有工单。</p>}
+        {!list.length && <p className="muted pad">{isRepair ? '没有符合条件的维修单。' : '还没有工单。'}</p>}
       </div>
-      {adding && <AddOrder props={props.filter((x) => mineAid(x.assistant_id))} onClose={() => setAdding(false)} onSaved={() => { setAdding(false); setMsg('已新建工单。'); load() }} />}
+      {adding && <AddOrder isRepair={isRepair} props={props.filter((x) => mineAid(x.assistant_id))} onClose={() => setAdding(false)} onSaved={() => { setAdding(false); setMsg(isRepair ? '已新建维修单。' : '已新建工单。'); load() }} />}
     </div>
   )
 }
 
-function OrderRow({ o, workers, onUpdate, focus }: { o: Order; workers: Worker[]; focus?: boolean; onUpdate: (id: number, patch: Record<string, unknown>, ok: string) => void }) {
+function OrderRow({ o, workers, onUpdate, focus, hideType }: { o: Order; workers: Worker[]; focus?: boolean; hideType?: boolean; onUpdate: (id: number, patch: Record<string, unknown>, ok: string) => void }) {
   const flow = flowOf(o.type, o.executor)
   const idx = flow.indexOf(o.status)
   const next = idx >= 0 && idx < flow.length - 1 ? flow[idx + 1] : ''
@@ -135,9 +146,9 @@ function OrderRow({ o, workers, onUpdate, focus }: { o: Order; workers: Worker[]
     <tr id={`wo-${o.id}`} className={focus ? 'focus-row' : undefined}>
       <td>{o.created_at.slice(5, 10).replace('-', '/')}</td>
       <td><b>{o.property?.name}</b>{o.urgent && <span className="chip amber">次日入住</span>}</td>
-      <td>{o.type}</td><td>{o.description ?? '—'}{o.damage_report && <div className="muted small">清洁上报损坏：{o.damage_report} <button className="task-btn" onClick={() => nav(`/claims?property=${o.property_id}`)}>已转入索赔，去查看</button></div>}</td><td>{who}</td>
+      {!hideType && <td>{o.type}</td>}<td>{o.description ?? '—'}{o.damage_report && <div className="muted small">清洁上报损坏：{o.damage_report} <button className="task-btn" onClick={() => nav(`/claims?property=${o.property_id}`)}>已转入索赔，去查看</button></div>}</td><td>{who}</td>
       <td><span className={chipOf(o.status)}>{o.status}</span></td>
-      <td>{o.type === '清洁' ? '—' : `${money(o.amount)}（${o.payer}）`}</td>
+      <td>{o.type === '清洁' ? '—' : `${money(o.amount)}（${o.payer}）`}{o.type === '维修' && o.status === '已完成' && <div>{o.settled_at ? <span className="chip green" style={{ marginLeft: 0 }}>已和师傅结算</span> : <span className="muted small">未和师傅结算</span>}</div>}</td>
       <td>{action}{nPics > 0 && <button className="ghost" onClick={showPics}>看照片（{nPics}）</button>}
         {pics && <div className="modal-bg" onClick={() => setPics(null)}><div className="modal" style={{ width: 720 }} onClick={(e) => e.stopPropagation()}><h2>{o.property?.name} · 照片</h2><div className="pics">{pics.map((u) => <a key={u} href={u} target="_blank" rel="noreferrer"><img src={u} /></a>)}{!pics.length && <p className="muted">照片加载失败。</p>}</div><button className="ghost" onClick={() => setPics(null)}>关闭</button></div></div>}
       </td>
@@ -145,8 +156,8 @@ function OrderRow({ o, workers, onUpdate, focus }: { o: Order; workers: Worker[]
   )
 }
 
-function AddOrder({ props, onClose, onSaved }: { props: Prop[]; onClose: () => void; onSaved: () => void }) {
-  const [f, setF] = useState({ property_id: '', type: '维修' as OType, description: '', executor: '公司派人', planned_date: '', urgent: false, owner_notified: false })
+function AddOrder({ props, isRepair, onClose, onSaved }: { props: Prop[]; isRepair: boolean; onClose: () => void; onSaved: () => void }) {
+  const [f, setF] = useState({ property_id: '', type: (isRepair ? '维修' : '清洁') as OType, description: '', executor: '公司派人', planned_date: '', urgent: false, owner_notified: false })
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const save = async () => {
@@ -167,9 +178,9 @@ function AddOrder({ props, onClose, onSaved }: { props: Prop[]; onClose: () => v
   return (
     <div className="modal-bg" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>新建工单</h2>
+        <h2>{isRepair ? '新建维修单' : '新建工单'}</h2>
         <label>房源<select value={f.property_id} onChange={(e) => setF({ ...f, property_id: e.target.value })}><option value="">请选择</option>{props.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
-        <label>类型<select value={f.type} onChange={(e) => setF({ ...f, type: e.target.value as OType })}><option>维修</option><option>清洁</option><option>除草</option><option>除虫</option></select></label>
+        {!isRepair && <label>类型<select value={f.type} onChange={(e) => setF({ ...f, type: e.target.value as OType })}><option>清洁</option><option>除草</option><option>除虫</option></select></label>}
         {(f.type === '除草' || f.type === '除虫') && <label>谁来做<select value={f.executor} onChange={(e) => setF({ ...f, executor: e.target.value })}><option>公司派人</option><option>房东自己</option></select></label>}
         <label>内容<textarea rows={3} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></label>
         <label>计划日期（选填）<input type="date" value={f.planned_date} onChange={(e) => setF({ ...f, planned_date: e.target.value })} /></label>

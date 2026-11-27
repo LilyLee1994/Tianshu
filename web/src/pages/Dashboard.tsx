@@ -130,10 +130,10 @@ export default function Dashboard() {
       for (const x of (o.data ?? []) as unknown as { id: number; status: string; type: string; description: string; property: { name: string; assistant_id: string | null } }[]) {
         if (!mine(x.property?.assistant_id)) continue
         const label = `${x.property?.name} · ${x.type} · ${x.description ?? ''}`
-        if (x.status === '待派单') { pending++; t.push({ tag: '待派单', text: label, to: `/orders?id=${x.id}`, cls: 'amber', lv: 'red' }) }
-        else if (x.status === '待确认费用') { pending++; t.push({ tag: '确认费用', text: label, to: `/orders?id=${x.id}`, cls: 'purple', lv: 'orange' }) }
-        else if (x.status === '待通知房东') t.push({ tag: '通知房东', text: label, to: `/orders?id=${x.id}`, cls: 'amber', lv: 'orange' })
-        else if (x.status === '房东已完成') t.push({ tag: '确认', text: `${label}，房东说已完成，请确认`, to: `/orders?id=${x.id}`, cls: 'purple', lv: 'yellow' })
+        if (x.status === '待派单') { pending++; t.push({ tag: '待派单', text: label, to: `${x.type === '维修' ? '/repairs' : '/orders'}?id=${x.id}`, cls: 'amber', lv: 'red' }) }
+        else if (x.status === '待确认费用') { pending++; t.push({ tag: '确认费用', text: label, to: `${x.type === '维修' ? '/repairs' : '/orders'}?id=${x.id}`, cls: 'purple', lv: 'orange' }) }
+        else if (x.status === '待通知房东') t.push({ tag: '通知房东', text: label, to: `${x.type === '维修' ? '/repairs' : '/orders'}?id=${x.id}`, cls: 'amber', lv: 'orange' })
+        else if (x.status === '房东已完成') t.push({ tag: '确认', text: `${label}，房东说已完成，请确认`, to: `${x.type === '维修' ? '/repairs' : '/orders'}?id=${x.id}`, cls: 'purple', lv: 'yellow' })
         else doing++
       }
       let incomplete = 0

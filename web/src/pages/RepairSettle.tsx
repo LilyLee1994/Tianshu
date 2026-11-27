@@ -71,7 +71,6 @@ export default function RepairSettle() {
 
   return (
     <div>
-      <h1>维修结算</h1>
       <p className="muted small">按完成日期列出这段时间所有已完成的维修单，按师傅分组，方便月底对账、付钱。点“标记已结算”后，这些单就不会再出现在“未结算”里。</p>
       <div className="btn-row" style={{ marginBottom: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <span className="muted small">完成日期</span>
@@ -87,7 +86,7 @@ export default function RepairSettle() {
         <button onClick={() => query()}>查询</button>
         <button className="ghost" onClick={exportCsv} disabled={!shown.length}>导出 CSV</button>
       </div>
-      {pending > 0 && <p className="warn small">还有 {pending} 张维修单是“待确认费用”，确认金额、完成之后才会算进来。<button className="task-btn" onClick={() => nav('/orders')}>去工单页</button></p>}
+      {pending > 0 && <p className="warn small">还有 {pending} 张维修单是“待确认费用”，确认金额、完成之后才会算进来。<button className="task-btn" onClick={() => nav('/repairs?tab=list')}>去处理</button></p>}
       {msg && <p className="muted">{msg}</p>}
       {!groups.length && <p className="muted pad">{from} 至 {to} 没有符合条件的已完成维修单。</p>}
       {groups.map((g) => (
@@ -110,7 +109,7 @@ export default function RepairSettle() {
                   <td>{r.payer}</td>
                   <td>{r.settled_at ? <span className="chip green" style={{ marginLeft: 0 }}>已结算</span> : <span className="chip amber" style={{ marginLeft: 0 }}>未结算</span>}</td>
                   <td className="btn-row" style={{ margin: 0 }}>
-                    <button className="task-btn" onClick={() => nav(`/orders?id=${r.id}`)}>看工单</button>
+                    <button className="task-btn" onClick={() => nav(`/repairs?id=${r.id}`)}>看工单</button>
                     {r.settled_at && <button className="task-btn" disabled={busy} onClick={() => settle([r.id], false)}>取消结算</button>}
                   </td>
                 </tr>

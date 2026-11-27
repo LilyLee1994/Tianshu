@@ -39,13 +39,13 @@ export default function Claims() {
   const makeRepair = async (r: Claim) => {
     const tag = `【索赔#${r.id}】`
     const ex = await supabase.from('work_orders').select('id').eq('type', '维修').like('description', `${tag}%`).limit(1)
-    if (ex.data?.length) { nav(`/orders?id=${ex.data[0].id}`); return }
+    if (ex.data?.length) { nav(`/repairs?id=${ex.data[0].id}`); return }
     const { data, error } = await supabase.from('work_orders').insert({
       property_id: r.property_id, type: '维修', description: `${tag}${r.content.replace('【清洁上报损坏】', '')}`,
       status: '待派单', damage_photos: r.photos ?? [],
     }).select('id').single()
     if (error || !data) { setMsg(`生成失败：${error?.message ?? ''}`); return }
-    nav(`/orders?id=${data.id}`)
+    nav(`/repairs?id=${data.id}`)
   }
 
   const load = useCallback(async () => {
