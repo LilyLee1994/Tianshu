@@ -164,3 +164,7 @@ td .ghost, td button.ghost { white-space: nowrap; }
 .mcard-desc { color: #3a4a52; }
 .mobile.wide header { padding-bottom: 12px; border-bottom: 1px solid #e1e5ea; }
 .wdetail .card { background: #fff; border: 1px solid #e1e5ea; border-radius: 12px; padding: 18px 22px; }
+
+/* 卡片不被挤扁：内容多高就多高（之前把最小高度去掉后，列表里的卡片被压缩，文字溢出） */
+.mcard { flex: 0 0 auto; height: auto; overflow: visible; }
+.wlist > *, .mobile > * { flex-shrink: 0; }
