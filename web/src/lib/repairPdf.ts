@@ -25,15 +25,15 @@ const th = (t: string, right = false, w = '') => `<th style="text-align:${right 
 function pageHtml(worker: string, period: string, rows: PdfRow[], first: boolean, last: boolean, total: number, n: number, pageNo: number, pages: number, today: string) {
   const body = rows.map((r, i) => `<tr style="background:${i % 2 ? '#f5f8f8' : '#fff'}">
     <td style="padding:11px 12px;font-size:13px;white-space:nowrap">${esc(r.date)}</td>
-    <td style="padding:11px 12px;font-size:13px">${esc(r.property)}</td>
-    <td style="padding:11px 12px;font-size:13px;line-height:1.45">${esc(r.text)}</td>
+    <td style="padding:11px 12px;font-size:13px;word-break:break-all">${esc(r.property)}</td>
+    <td style="padding:11px 12px;font-size:13px;line-height:1.45;word-break:break-all;overflow-wrap:anywhere">${esc(r.text)}</td>
     <td style="padding:11px 12px;font-size:13px;text-align:right;white-space:nowrap;font-weight:600">${r.amount == null ? '—' : fmt(r.amount)}</td></tr>`).join('')
   const totalBox = last ? `<div style="display:flex;justify-content:flex-end;margin-top:22px"><div style="min-width:260px;border:2px solid ${BRAND};border-radius:12px;padding:14px 20px;display:flex;justify-content:space-between;align-items:baseline;gap:30px">
       <div><div style="font-size:12px;color:#7b8794">总计（共 ${n} 单）</div><div style="font-size:12px;color:#7b8794;margin-top:2px">Total</div></div>
       <div style="font-size:26px;font-weight:700;color:${BRAND}">${fmt(total)}</div></div></div>` : ''
   return `<div class="pdf-page" style="width:794px;height:1123px;box-sizing:border-box;padding:44px 48px 36px;background:#fff;color:#1b2430;font-family:'PingFang SC','Microsoft YaHei','Noto Sans CJK SC',system-ui,sans-serif;position:relative">
     ${first ? header(worker, period) : `<div style="font-size:13px;color:#7b8794;padding-bottom:12px;border-bottom:2px solid ${BRAND};margin-bottom:18px"><b style="color:${BRAND}">Wise Stay</b> · 维修对账单 · ${esc(worker)} · ${esc(period)}</div>`}
-    <table style="width:100%;border-collapse:collapse"><thead><tr>${th('日期', false, 'width:96px;border-radius:8px 0 0 0')}${th('房源', false, 'width:170px')}${th('事项')}${th('金额', true, 'width:110px;border-radius:0 8px 0 0')}</tr></thead><tbody>${body}</tbody></table>
+    <table style="width:698px;table-layout:fixed;border-collapse:collapse"><thead><tr>${th('日期', false, 'width:104px;border-radius:8px 0 0 0')}${th('房源', false, 'width:150px')}${th('事项')}${th('金额', true, 'width:120px;border-radius:0 8px 0 0')}</tr></thead><tbody>${body}</tbody></table>
     ${totalBox}
     <div style="position:absolute;left:48px;right:48px;bottom:30px;display:flex;justify-content:space-between;font-size:11px;color:#9aa5b1;border-top:1px solid #e3e8ee;padding-top:10px"><span>Wise Stay · 生成日期 ${today}</span><span>第 ${pageNo} / ${pages} 页</span></div>
   </div>`
@@ -51,14 +51,14 @@ export async function downloadRepairPdf(worker: string, period: string, rows: Pd
   if (chunks[chunks.length - 1].length > lastCap) chunks.push([])
   const today = new Date().toLocaleDateString('en-CA')
   const host = document.createElement('div')
-  host.style.cssText = 'position:fixed;left:-10000px;top:0'
+  host.style.cssText = 'position:absolute;left:0;top:0;z-index:-1;width:794px;overflow:hidden;pointer-events:none'
   host.innerHTML = chunks.map((c, i) => pageHtml(worker, period, c, i === 0, i === chunks.length - 1, total, rows.length, i + 1, chunks.length, today)).join('')
   document.body.appendChild(host)
   try {
     const pdf = new jsPDF({ unit: 'mm', format: 'a4' })
     const pages = Array.from(host.querySelectorAll<HTMLElement>('.pdf-page'))
     for (let i = 0; i < pages.length; i++) {
-      const canvas = await html2canvas(pages[i], { scale: 2, backgroundColor: '#ffffff' })
+      const canvas = await html2canvas(pages[i], { scale: 2, backgroundColor: '#ffffff', width: 794, height: 1123, windowWidth: 1200, scrollX: 0, scrollY: 0 })
       if (i > 0) pdf.addPage()
       pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, 210, 297)
     }
