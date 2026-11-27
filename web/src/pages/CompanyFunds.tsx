@@ -144,9 +144,9 @@ export default function CompanyFunds() {
   )
 }
 
-function EditModal({ row, props, isAdmin, onClose, onSaved }: { row: Row | null; props: Prop[]; isAdmin: boolean; onClose: () => void; onSaved: (t: string) => void }) {
+export function EditModal({ row, props, isAdmin, onClose, onSaved, defaultProperty }: { row: Row | null; props: Prop[]; isAdmin: boolean; onClose: () => void; onSaved: (t: string) => void; defaultProperty?: number }) {
   const [f, setF] = useState({
-    property_id: row ? String(row.property_id) : '', occurred_date: row?.occurred_date ?? today(), platform: row?.platform ?? 'Airbnb',
+    property_id: row ? String(row.property_id) : defaultProperty ? String(defaultProperty) : '', occurred_date: row?.occurred_date ?? today(), platform: row?.platform ?? 'Airbnb',
     order_ref: row?.order_ref ?? '', guest_name: row?.guest_name ?? '', check_in: row?.check_in ?? '', check_out: row?.check_out ?? '',
     kind: row?.kind ?? '收款', category: row?.category ?? '房费', amount: row ? String(Math.abs(Number(row.amount))) : '',
     payer: row?.payer ?? '', owner_effect: row?.owner_effect ?? '无', reason: row?.reason ?? '',

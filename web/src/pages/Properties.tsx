@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { EditModal } from './CompanyFunds'
 import { ProfitButton } from './PropertyProfit'
 import Loading from '../lib/Loading'
 import { supabase } from '../lib/supabase'
@@ -275,6 +276,8 @@ function AccountEditModal({ a, old, found, propertyId, onClose, onSaved }: {
 
 function Detail({ row: r, canEdit, isAdmin, onEdit, onChanged }: { row: Row; canEdit: boolean; isAdmin: boolean; onEdit: () => void; onChanged: () => void }) {
   const [hist, setHist] = useState(false)
+  const [addFund, setAddFund] = useState(false)
+  const [fundMsg, setFundMsg] = useState('')
   const nav = useNavigate()
   const [rt, setRt] = useState<Record<string, { n: number; avg: number }>>({})
   useEffect(() => {
@@ -290,7 +293,7 @@ function Detail({ row: r, canEdit, isAdmin, onEdit, onChanged }: { row: Row; can
     <section className="card">
       <div className="title-row">
         <h2>{r.name} <span className={statusClass(st)}>{st}</span> <span className={d?.self_operated ? 'chip amber' : 'chip'}>{d?.self_operated ? '自营' : '房东托管'}</span></h2>
-        <span className="btn-row" style={{ margin: 0 }}><button className="ghost" onClick={() => nav(`/reviews?property=${r.id}`)}>差评</button><button className="ghost" onClick={() => nav(`/claims?property=${r.id}`)}>索赔</button>{canEdit && <button className="ghost" onClick={onEdit}>编辑</button>}{isAdmin && <ProfitButton propertyId={r.id} name={r.name} />}{isAdmin && <button className="ghost" onClick={() => setHist(true)}>修改记录</button>}</span>
+        <span className="btn-row" style={{ margin: 0 }}><button className="ghost" onClick={() => nav(`/reviews?property=${r.id}`)}>差评</button><button className="ghost" onClick={() => nav(`/claims?property=${r.id}`)}>索赔</button>{canEdit && <button className="ghost" onClick={() => { setFundMsg(''); setAddFund(true) }}>新增款项</button>}{canEdit && <button className="ghost" onClick={onEdit}>编辑</button>}{isAdmin && <ProfitButton propertyId={r.id} name={r.name} />}{isAdmin && <button className="ghost" onClick={() => setHist(true)}>修改记录</button>}</span>
       </div>
       <dl>
         <dt>地址</dt><dd>{dash(r.address)}</dd>
@@ -319,6 +322,8 @@ function Detail({ row: r, canEdit, isAdmin, onEdit, onChanged }: { row: Row; can
       </div>
       <HandoverCard propertyId={r.id} assistantId={r.assistant_id} />
       {(r.airbnb_account || canEdit) && <AccountBlock a={r.airbnb_account} old={r.account_info?.old_accounts ?? []} propertyId={r.id} canEdit={canEdit} onChanged={onChanged} />}
+      {fundMsg && <p className="ok small">{fundMsg}</p>}
+      {addFund && <EditModal row={null} defaultProperty={r.id} props={[{ id: r.id, name: r.name, assistant_id: r.assistant_id }]} isAdmin={isAdmin} onClose={() => setAddFund(false)} onSaved={() => { setAddFund(false); setFundMsg('已新增一条款项，可以在“公司款项”里查看。') }} />}
       {hist && <HistoryModal title={r.name} filters={[{ table: 'properties', id: r.id }, { table: 'property_details', id: r.id }, { table: 'property_contracts', id: r.id }, { table: 'property_account_info', id: r.id }]} onClose={() => setHist(false)} />}
       {st === '待登记合同' && <p className="warn">水电燃气网络和合同到期日填完整后，房源才算“运营中”。</p>}
     </section>
