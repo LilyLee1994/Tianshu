@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { money } from '../lib/ui'
+import { downloadRepairPdf } from '../lib/repairPdf'
 
 interface Row {
   id: number; type: string; description: string | null; amount: number | null; owner_charge?: number | null; payer: string; status: string
@@ -62,6 +63,16 @@ export default function RepairSettle() {
     if (error) { setMsg(error.code === '42703' ? '保存失败：还没运行 066 迁移。' : `保存失败：${error.message}`); return }
     setMsg(on ? `已标记 ${ids.length} 张为已结算。` : `已取消 ${ids.length} 张的已结算。`); load()
   }
+  const downloadPdf = async (name: string, list: Row[]) => {
+    setBusy(true); setMsg('')
+    try {
+      const sorted = [...list].sort((a, b) => (a.done_date ?? '').localeCompare(b.done_date ?? ''))
+      await downloadRepairPdf(name, `${from} 至 ${to}`, sorted.map((r) => ({
+        date: r.done_date ?? '', property: r.property?.name ?? '', text: (r.description ?? '').replace(/^【索赔#\d+】/, ''), amount: r.amount == null ? null : Number(r.amount),
+      })))
+    } catch (e) { setMsg(`生成 PDF 失败：${e instanceof Error ? e.message : '请重试'}`) }
+    setBusy(false)
+  }
   const exportCsv = () => {
     const head = ['师傅', '完成日期', '房源', '内容', '金额', '谁承担', '是否已结算']
     const lines = shown.map((r) => [workerOf(r), r.done_date ?? '', r.property?.name ?? '', r.description ?? '', r.amount ?? '', r.payer, r.settled_at ? '已结算' : '未结算'])
@@ -95,6 +106,7 @@ export default function RepairSettle() {
             <h3 style={{ margin: 0 }}>{g.name} <span className="muted small">· {g.list.length} 单 · 合计 {money(g.total)}</span></h3>
             <span className="btn-row" style={{ margin: 0 }}>
               <span className="small">未结算 <b>{money(g.openTotal)}</b>（{g.open.length} 单）</span>
+              <button className="ghost" disabled={busy} onClick={() => downloadPdf(g.name, g.list)}>下载对账单 PDF</button>
               <button disabled={busy || !g.open.length} onClick={() => settle(g.open.map((r) => r.id), true)}>标记这些为已结算</button>
             </span>
           </div>
