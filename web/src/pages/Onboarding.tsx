@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { matchQ } from '../lib/ui'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -213,7 +214,7 @@ export default function Onboarding() {
 function StartModal({ props, onClose, onStart }: { props: Prop[]; onClose: () => void; onStart: (id: number, live: boolean) => void }) {
   const [q, setQ] = useState('')
   const [live, setLive] = useState<boolean | null>(null)
-  const list = props.filter((p) => !q || p.name.toLowerCase().includes(q.toLowerCase())).slice(0, 30)
+  const list = props.filter((p) => !q || matchQ(p.name, q)).slice(0, 30)
   return (
     <div className="modal-bg" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>

@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { coveredAssistantIds } from '../lib/cover'
-import { money, today } from '../lib/ui'
+import { money, today, matchQ } from '../lib/ui'
 import { signedUrls, uploadPhotos } from '../lib/photos'
 
 const PAID: string[] = ['已赔付', '客人直接赔付']
@@ -63,7 +63,7 @@ export default function Claims() {
     if (isAssistant && !(r.property?.assistant_id && cover.has(r.property.assistant_id))) return false
     if (onlyProp && r.property_id !== onlyProp) return false
     if (status && r.status !== status) return false
-    if (q && !`${r.property?.name} ${r.guest_name ?? ''} ${r.content}`.toLowerCase().includes(q.toLowerCase())) return false
+    if (q && !matchQ(`${r.property?.name} ${r.guest_name ?? ''} ${r.content}`, q)) return false
     return true
   }), [rows, isAssistant, status, q, profile, onlyProp, cover])
 

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { callApi } from '../lib/api'
-import { money } from '../lib/ui'
+import { money, matchQ } from '../lib/ui'
 import { coveredAssistantIds } from '../lib/cover'
 
 interface St {
@@ -46,7 +46,7 @@ export default function Statements() {
 
   const shown = useMemo(() => rows.filter((r) => {
     if (isAssistant && !(r.property?.assistant_id && cover.has(r.property.assistant_id))) return false
-    if (q && !r.property?.name.toLowerCase().includes(q.toLowerCase())) return false
+    if (q && !matchQ(r.property?.name, q)) return false
     return true
   }), [rows, q, isAssistant, cover])
 

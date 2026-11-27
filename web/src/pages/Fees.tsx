@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { money } from '../lib/ui'
+import { money, matchQ } from '../lib/ui'
 
 interface Fee { id: number; property_id: number; standard_fee: number | null; deep_fee: number | null; guest_fee: number | null; effective_date: string }
 interface Prop { id: number; name: string; cleaning_by: string }
@@ -24,7 +24,7 @@ export default function Fees() {
   useEffect(() => { load() }, [load])
 
   const latest = useMemo(() => { const m = new Map<number, Fee>(); for (const f of fees) if (!m.has(f.property_id)) m.set(f.property_id, f); return m }, [fees])
-  const shown = props.filter((p) => !q || p.name.toLowerCase().includes(q.toLowerCase()))
+  const shown = props.filter((p) => !q || matchQ(p.name, q))
   const n = shown.filter((p) => latest.has(p.id)).length
 
   return (

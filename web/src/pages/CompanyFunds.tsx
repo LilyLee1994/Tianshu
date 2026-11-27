@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { coveredAssistantIds } from '../lib/cover'
-import { today } from '../lib/ui'
+import { today, matchQ } from '../lib/ui'
 
 const PLATFORMS = ['Airbnb', 'Booking.com', 'Vrbo', 'Terri Scheer', 'Turvi', '直订', '线下', '其他']
 const KINDS = ['收款', '押金收取', '线下转账', '退款', '协商退款', '清洁问题退款', '押金退还', '线下转出', '平台扣款', '赔付房东', '垫付费用']
@@ -64,7 +64,7 @@ export default function CompanyFunds() {
     if (ap.kind && r.kind !== ap.kind) return false
     if (ap.rec === 'no' && r.reconciled) return false
     if (ap.rec === 'yes' && !r.reconciled) return false
-    if (ap.q && !`${r.property?.name} ${r.guest_name ?? ''} ${r.order_ref ?? ''} ${r.reason ?? ''}`.toLowerCase().includes(ap.q.toLowerCase())) return false
+    if (ap.q && !matchQ(`${r.property?.name} ${r.guest_name ?? ''} ${r.order_ref ?? ''} ${r.reason ?? ''}`, ap.q)) return false
     return true
   }), [rows, isAssistant, cover, ap])
   const visible = rows.filter((r) => !isAssistant || (r.property?.assistant_id && cover.has(r.property.assistant_id))).length
