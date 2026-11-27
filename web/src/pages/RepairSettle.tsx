@@ -27,6 +27,7 @@ export default function RepairSettle() {
   const [pending, setPending] = useState(0)        // 这段时间里还没确认费用的维修单
   const [msg, setMsg] = useState('')
   const [busy, setBusy] = useState(false)
+  const [sel, setSel] = useState<Set<number>>(new Set())   // 勾选的维修单
 
   const load = useCallback(async () => {
     const base = supabase.from('work_orders').select('*, property:properties(name), worker:profiles!assigned_to(name)').eq('type', '维修')
@@ -41,7 +42,7 @@ export default function RepairSettle() {
 
   const query = (a = dFrom, b = dTo) => {
     if (!a || !b) { setMsg('请选好开始和结束日期。'); return }
-    setDFrom(a); setDTo(b); setFrom(a); setTo(b); setWho(dWho); setSt(dSt)
+    setDFrom(a); setDTo(b); setFrom(a); setTo(b); setWho(dWho); setSt(dSt); setSel(new Set())
   }
   const shown = useMemo(() => rows.filter((r) => (!who || workerOf(r) === who) && (st === '全部' || (st === '已结算' ? !!r.settled_at : !r.settled_at))), [rows, who, st])
   const workers = useMemo(() => [...new Set(rows.map(workerOf))].sort(), [rows])
@@ -52,16 +53,19 @@ export default function RepairSettle() {
       name, list, total: list.reduce((n, r) => n + Number(r.amount ?? 0), 0),
       open: list.filter((r) => !r.settled_at), openTotal: list.filter((r) => !r.settled_at).reduce((n, r) => n + Number(r.amount ?? 0), 0),
       noAmt: list.filter((r) => r.amount == null).length,
+      picked: list.filter((r) => sel.has(r.id)), pickedOpen: list.filter((r) => sel.has(r.id) && !r.settled_at),
     }))
-  }, [shown])
+  }, [shown, sel])
 
+  const toggle = (ids: number[], on: boolean) => setSel((p) => { const n = new Set(p); ids.forEach((i) => (on ? n.add(i) : n.delete(i))); return n })
+  const picked = shown.filter((r) => sel.has(r.id))
   const settle = async (ids: number[], on: boolean) => {
     if (!ids.length) return
     setBusy(true); setMsg('')
     const { error } = await supabase.from('work_orders').update({ settled_at: on ? new Date().toISOString() : null }).in('id', ids)
     setBusy(false)
     if (error) { setMsg(error.code === '42703' ? '保存失败：还没运行 066 迁移。' : `保存失败：${error.message}`); return }
-    setMsg(on ? `已标记 ${ids.length} 张为已结算。` : `已取消 ${ids.length} 张的已结算。`); load()
+    setMsg(on ? `已标记 ${ids.length} 张为已结算。` : `已取消 ${ids.length} 张的已结算。`); setSel(new Set()); load()
   }
   const downloadPdf = async (name: string, list: Row[]) => {
     setBusy(true); setMsg('')
@@ -75,7 +79,7 @@ export default function RepairSettle() {
   }
   const exportCsv = () => {
     const head = ['师傅', '完成日期', '房源', '内容', '金额', '谁承担', '是否已结算']
-    const lines = shown.map((r) => [workerOf(r), r.done_date ?? '', r.property?.name ?? '', r.description ?? '', r.amount ?? '', r.payer, r.settled_at ? '已结算' : '未结算'])
+    const lines = picked.map((r) => [workerOf(r), r.done_date ?? '', r.property?.name ?? '', r.description ?? '', r.amount ?? '', r.payer, r.settled_at ? '已结算' : '未结算'])
     const csv = '﻿' + [head, ...lines].map((l) => l.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); a.download = `维修结算_${from}至${to}.csv`; a.click()
   }
@@ -95,7 +99,8 @@ export default function RepairSettle() {
         <select value={dWho} onChange={(e) => setDWho(e.target.value)}><option value="">全部师傅</option>{workers.map((w) => <option key={w}>{w}</option>)}</select>
         <select value={dSt} onChange={(e) => setDSt(e.target.value)}><option>全部</option><option>未结算</option><option>已结算</option></select>
         <button onClick={() => query()}>查询</button>
-        <button className="ghost" onClick={exportCsv} disabled={!shown.length}>导出 CSV</button>
+        <label className="small" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><input type="checkbox" style={{ width: 18, height: 18, minHeight: 0 }} checked={!!shown.length && picked.length === shown.length} onChange={(e) => toggle(shown.map((r) => r.id), e.target.checked)} />全选（已选 {picked.length} / {shown.length}）</label>
+        <button className="ghost" onClick={exportCsv} disabled={!picked.length}>导出已选 CSV</button>
       </div>
       {pending > 0 && <p className="warn small">还有 {pending} 张维修单是“待确认费用”，确认金额、完成之后才会算进来。<button className="task-btn" onClick={() => nav('/repairs?tab=list')}>去处理</button></p>}
       {msg && <p className="muted">{msg}</p>}
@@ -106,16 +111,17 @@ export default function RepairSettle() {
             <h3 style={{ margin: 0 }}>{g.name} <span className="muted small">· {g.list.length} 单 · 合计 {money(g.total)}</span></h3>
             <span className="btn-row" style={{ margin: 0 }}>
               <span className="small">未结算 <b>{money(g.openTotal)}</b>（{g.open.length} 单）</span>
-              <button className="ghost" disabled={busy} onClick={() => downloadPdf(g.name, g.list)}>下载对账单 PDF</button>
-              <button disabled={busy || !g.open.length} onClick={() => settle(g.open.map((r) => r.id), true)}>标记这些为已结算</button>
+              <button className="ghost" disabled={busy || !g.picked.length} onClick={() => downloadPdf(g.name, g.picked)}>下载已选对账单 PDF{g.picked.length ? `（${g.picked.length}）` : ''}</button>
+              <button disabled={busy || !g.pickedOpen.length} onClick={() => settle(g.pickedOpen.map((r) => r.id), true)}>标记已选为已结算{g.pickedOpen.length ? `（${g.pickedOpen.length}）` : ''}</button>
             </span>
           </div>
           {g.noAmt > 0 && <p className="warn small">有 {g.noAmt} 单没有填金额，请到工单里补上。</p>}
           <div className="table-wrap" style={{ border: 0 }}>
             <table style={{ minWidth: 720 }}>
-              <thead><tr><th>完成日期</th><th>房源</th><th>内容</th><th style={{ textAlign: 'right' }}>给师傅</th><th>谁承担</th><th style={{ textAlign: 'right' }}>收房东</th><th>结算</th><th></th></tr></thead>
+              <thead><tr><th style={{ width: 36 }}><input type="checkbox" style={{ width: 18, height: 18, minHeight: 0 }} title="全选这位师傅的单" checked={g.picked.length === g.list.length} onChange={(e) => toggle(g.list.map((r) => r.id), e.target.checked)} /></th><th>完成日期</th><th>房源</th><th>内容</th><th style={{ textAlign: 'right' }}>给师傅</th><th>谁承担</th><th style={{ textAlign: 'right' }}>收房东</th><th>结算</th><th></th></tr></thead>
               <tbody>{g.list.map((r) => (
                 <tr key={r.id}>
+                  <td><input type="checkbox" style={{ width: 18, height: 18, minHeight: 0 }} checked={sel.has(r.id)} onChange={(e) => toggle([r.id], e.target.checked)} /></td>
                   <td style={{ whiteSpace: 'nowrap' }}>{r.done_date?.slice(5)}</td><td>{r.property?.name}</td><td>{r.description ?? ''}</td>
                   <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{r.amount == null ? <span className="muted">未填</span> : money(r.amount)}</td>
                   <td>{r.payer}</td>
