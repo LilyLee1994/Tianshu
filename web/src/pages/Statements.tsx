@@ -6,25 +6,26 @@ import { money } from '../lib/ui'
 import { coveredAssistantIds } from '../lib/cover'
 
 interface St {
-  id: number; property_id: number; month: string; reservations: number; nights: number; rental_income: number; commission_rate: number
+  id: number; property_id: number; month: string; period_start: string; period_end: string; reservations: number; nights: number; rental_income: number; commission_rate: number
   commission: number; platform_fee: number; gst: number; owner_costs: number; review_comp: number; claims_in: number; ledger_adj: number; adjustment: number; adjustment_note: string | null
   payable: number; status: '草稿' | '已确认' | '已付'; property: { name: string; assistant_id: string | null; assistant: { name: string } | null } | null
 }
 
-// 默认看上个月（月底结算的是刚结束的月份）
-const lastMonth = () => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1); return d.toISOString().slice(0, 7) }
+// 默认看上个月整月（月底结算的是刚结束的月份）
+const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+const monthRange = (offset: number) => { const n = new Date(); return [ymd(new Date(n.getFullYear(), n.getMonth() + offset, 1)), ymd(new Date(n.getFullYear(), n.getMonth() + offset + 1, 0))] as const }
 const chip = (s: string) => (s === '已付' ? 'chip green' : s === '已确认' ? 'chip blue' : 'chip amber')
 
 export default function Statements() {
   const { profile } = useAuth()
   const canEdit = profile?.role === 'admin' || profile?.role === 'finance'
+  const canGenerate = canEdit || profile?.role === 'assistant'      // 生成草稿：客服助理也可以
   const isAssistant = profile?.role === 'assistant'
   const [cover, setCover] = useState<Set<string>>(new Set())
   useEffect(() => { if (isAssistant && profile) coveredAssistantIds(profile.id).then(setCover) }, [profile?.id, isAssistant]) // eslint-disable-line react-hooks/exhaustive-deps
-  const [month, setMonth] = useState(lastMonth())
-  const [monthEnd, setMonthEnd] = useState('')            // 空 = 只看一个月
-  const endM = monthEnd && monthEnd >= month ? monthEnd : month
-  const multi = endM !== month
+  const [from, setFrom] = useState(monthRange(-1)[0])
+  const [to, setTo] = useState(monthRange(-1)[1])
+  const label = from === to ? from : `${from} 至 ${to}`
   const [rows, setRows] = useState<St[]>([])
   const [q, setQ] = useState('')
   const [busy, setBusy] = useState(false)
@@ -34,10 +35,10 @@ export default function Statements() {
   const load = useCallback(async () => {
     const { data, error } = await supabase.from('owner_statements')
       .select('*, property:properties(name, assistant_id, assistant:profiles!assistant_id(name))')
-      .gte('month', `${month}-01`).lte('month', `${endM}-01`).order('month').order('property_id').limit(5000)
+      .eq('period_start', from).eq('period_end', to).order('property_id').limit(5000)
     if (error) { setMsg(`读取出错：${error.message}`); return }
     setRows((data ?? []) as never)
-  }, [month, endM])
+  }, [from, to])
   useEffect(() => { load() }, [load])
 
   const shown = useMemo(() => rows.filter((r) => {
@@ -60,39 +61,31 @@ export default function Statements() {
     setAdj(null); load()
   }
 
-  const genRange = async () => {
-    const ms: string[] = []
-    for (let d = new Date(`${month}-01`); d.toISOString().slice(0, 7) <= endM && ms.length < 12; d.setMonth(d.getMonth() + 1)) ms.push(d.toISOString().slice(0, 7))
-    if (ms.length === 1) { await act({ action: 'generate', month: ms[0] }, ''); return }
-    setBusy(true); setMsg('')
-    let made = 0, kept = 0
-    for (const m of ms) {
-      const [r, e] = await callApi<{ made?: number; kept?: number }>('statements', { action: 'generate', month: m })
-      if (e) { setBusy(false); setMsg(`${m} 生成失败：${e}`); load(); return }
-      made += r?.made ?? 0; kept += r?.kept ?? 0
-    }
-    setBusy(false); setMsg(`已生成 ${ms.length} 个月共 ${made} 张草稿${kept ? `，${kept} 张已确认的没动` : ''}。`); load()
+  const generate = async () => {
+    if (!from || !to || from > to) { setMsg('请选好开始和结束日期（开始不能晚于结束）。'); return }
+    await act({ action: 'generate', from, to }, '')
   }
 
   const exportCsv = () => {
-    const head = ['月份', '房源', '助理', '订单数', '晚数', '房费', '佣金比例', '佣金', '平台费', 'GST', '房东承担维修', '差评赔偿', '索赔到账', '公司款项', '调整', '调整说明', '应付房东', '状态']
-    const lines = shown.map((r) => [r.month.slice(0, 7), r.property?.name, r.property?.assistant?.name ?? '', r.reservations, r.nights, r.rental_income, r.commission_rate, r.commission, r.platform_fee, r.gst, r.owner_costs, r.review_comp, r.claims_in, r.ledger_adj ?? 0, r.adjustment, r.adjustment_note ?? '', r.payable, r.status]
+    const head = ['期间', '房源', '助理', '订单数', '晚数', '房费', '佣金比例', '佣金', '平台费', 'GST', '房东承担维修', '差评赔偿', '索赔到账', '公司款项', '调整', '调整说明', '应付房东', '状态']
+    const lines = shown.map((r) => [`${r.period_start}~${r.period_end}`, r.property?.name, r.property?.assistant?.name ?? '', r.reservations, r.nights, r.rental_income, r.commission_rate, r.commission, r.platform_fee, r.gst, r.owner_costs, r.review_comp, r.claims_in, r.ledger_adj ?? 0, r.adjustment, r.adjustment_note ?? '', r.payable, r.status]
       .map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))
     const url = URL.createObjectURL(new Blob(['﻿' + [head.join(','), ...lines].join('\n')], { type: 'text/csv;charset=utf-8' }))
-    const a = document.createElement('a'); a.href = url; a.download = `房东结算-${multi ? `${month}至${endM}` : month}.csv`; a.click(); URL.revokeObjectURL(url)
+    const a = document.createElement('a'); a.href = url; a.download = `房东结算-${from}至${to}.csv`; a.click(); URL.revokeObjectURL(url)
   }
 
   return (
     <div>
-      <h1>房东结算（财务）</h1>
-      <p className="muted small">应付房东 = 房费（不含清洁费，按退房日归月）先扣平台费 16.5%，再在剩下的金额上扣佣金（比例 × 1.1，默认 15% → 16.5%）；再 + 当月到账的索赔、± 手工调整、− 房东承担的维修费和差评赔偿。平台费和佣金已含 GST，“其中 GST”仅供对账。确认后不能再改。</p>
+      <h1>房东结算</h1>
+      <p className="muted small">应付房东 = 房费（不含清洁费，按退房日算在哪个日期范围）先扣平台费 16.5%，再在剩下的金额上扣佣金（比例 × 1.1，默认 15% → 16.5%）；再 + 当月到账的索赔、± 手工调整、− 房东承担的维修费和差评赔偿。平台费和佣金已含 GST，“其中 GST”仅供对账。确认后不能再改。</p>
       <div className="btn-row" style={{ marginBottom: 12 }}>
-        <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} title="起始月份" />
+        <input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} title="开始日期（含当天）" />
         <span className="muted small">到</span>
-        <input type="month" value={monthEnd} min={month} onChange={(e) => setMonthEnd(e.target.value)} title="结束月份（不选就只看起始月）" />
-        {monthEnd && <button className="ghost" onClick={() => setMonthEnd('')}>只看一个月</button>}
+        <input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} title="结束日期（含当天）" />
+        <button className="ghost" onClick={() => { const r = monthRange(-1); setFrom(r[0]); setTo(r[1]) }}>上个月</button>
+        <button className="ghost" onClick={() => { const r = monthRange(0); setFrom(r[0]); setTo(r[1]) }}>本月</button>
         <input placeholder="搜索房源" value={q} onChange={(e) => setQ(e.target.value)} />
-        {canEdit && <button disabled={busy} onClick={genRange}>{busy ? '生成中…' : multi ? '生成这几个月的草稿' : rows.length ? '重新计算草稿' : '生成这个月的草稿'}</button>}
+        {canGenerate && <button disabled={busy} onClick={generate}>{busy ? '生成中…' : rows.length ? '重新计算草稿' : '生成这段时间的草稿'}</button>}
         <button className="ghost" onClick={exportCsv} disabled={!shown.length}>导出 CSV</button>
       </div>
       {msg && <p className="muted">{msg}</p>}
@@ -103,7 +96,7 @@ export default function Statements() {
           <tbody>
             {shown.map((r) => (
               <tr key={r.id}>
-                <td>{r.property?.name}{multi && <div className="muted small">{r.month.slice(0, 7)}</div>}</td><td>{r.property?.assistant?.name ?? '—'}</td>
+                <td>{r.property?.name}</td><td>{r.property?.assistant?.name ?? '—'}</td>
                 <td>{r.reservations} / {r.nights}</td>
                 <td>{money(r.rental_income)}</td>
                 <td>{money(r.commission)} <span className="muted small">{Math.round(Number(r.commission_rate) * 1000) / 10}%</span></td>
@@ -127,10 +120,10 @@ export default function Statements() {
           </tbody>
         </table>
         {!shown.length && <p className="muted pad">{
-          rows.length && !q ? `${multi ? `${month} 至 ${endM}` : month} 已经有结算单，但没有你负责的房源。`
+          rows.length && !q ? `${label} 已经有结算单，但没有你负责的房源。`
           : q ? '没有找到匹配的房源。'
-          : endM >= new Date().toISOString().slice(0, 7) ? `${multi ? `${month} 至 ${endM}` : month} 这个月还没结束，结算单要等月底之后由财务生成。` + (canEdit ? '月底后点上面的“生成这个月的草稿”。' : '')
-          : `${multi ? `${month} 至 ${endM}` : month} 的结算单财务还没有生成。` + (canEdit ? '点上面的“生成这个月的草稿”。' : '生成后这里会显示。')
+          : to >= ymd(new Date()) ? `${label} 还没有结束，订单按退房日算，现在生成的草稿只包含已经退房的订单。点上面的“生成这段时间的草稿”可以先看看。`
+          : `${label} 还没有生成结算单。点上面的“生成这段时间的草稿”。`
         }</p>}
       </div>
 

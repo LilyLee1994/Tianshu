@@ -1,7 +1,8 @@
-import { adminClient, requireFinance, type Req, type Res } from './_lib.js'
+import { adminClient, authenticate, type Req, type Res } from './_lib.js'
 
 const CANCELLED = /cancel|inquiry|declin|expire|denied/i
 const r2 = (n: number) => Math.round(n * 100) / 100
+const addDay = (d: string, n: number) => new Date(Date.parse(d) + n * 86400000).toISOString().slice(0, 10)
 const nextMonth = (m: string) => { const [y, mo] = m.split('-').map(Number); return mo === 12 ? `${y + 1}-01-01` : `${y}-${String(mo + 1).padStart(2, '0')}-01` }
 
 // 结算单草稿：房费（不含清洁费，按退房日归月）先扣平台费（16.5%，含 GST），再在剩下的金额上扣佣金（15% × 1.1 = 16.5%，含 GST），
@@ -9,12 +10,25 @@ const nextMonth = (m: string) => { const [y, mo] = m.split('-').map(Number); ret
 export default async function handler(req: Req, res: Res) {
   try {
     const db = adminClient()
-    if (!(await requireFinance(req, res, db))) return
+    if (req.method !== 'POST') return res.status(405).json({ error: '只支持 POST。' })
+    const caller = await authenticate(req, res, db)
+    if (!caller) return
     const { action, month, id, adjustment, note } = req.body ?? {}
+    // 生成草稿：管理员、财务、客服助理都可以；确认、标记已付、调整只有管理员和财务
+    if (action === 'generate' ? !['admin', 'finance', 'assistant'].includes(caller.role) : !['admin', 'finance'].includes(caller.role)) {
+      return res.status(403).json({ error: action === 'generate' ? '没有权限生成结算草稿。' : '只有管理员和财务可以做这个操作。' })
+    }
 
     if (action === 'generate') {
-      if (!/^\d{4}-\d{2}$/.test(month ?? '')) return res.status(400).json({ error: '月份格式不对。' })
-      const from = `${month}-01`, to = nextMonth(month)
+      // 按日期范围（含首尾）；也兼容只传 month 的旧用法
+      const isDate = (d: unknown) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(d))
+      let periodStart: string, periodEnd: string
+      if (isDate(req.body?.from) && isDate(req.body?.to)) { periodStart = req.body.from; periodEnd = req.body.to }
+      else if (/^\d{4}-\d{2}$/.test(month ?? '')) { periodStart = `${month}-01`; periodEnd = addDay(nextMonth(month), -1) }
+      else return res.status(400).json({ error: '日期格式不对。' })
+      if (periodStart > periodEnd) return res.status(400).json({ error: '开始日期不能晚于结束日期。' })
+      if ((Date.parse(periodEnd) - Date.parse(periodStart)) / 86400000 > 366) return res.status(400).json({ error: '一次最多生成 1 年的范围。' })
+      const from = periodStart, to = addDay(periodEnd, 1)       // to 不含当天
       const { data: rules } = await db.from('fee_rules').select('key, value')
       const rate = Object.fromEntries((rules ?? []).map((x) => [x.key, Number(x.value)]))
       const platformRate = rate.platform_fee_rate ?? 0.165, gstRate = rate.gst_rate ?? 0.1
@@ -64,7 +78,7 @@ export default async function handler(req: Req, res: Res) {
         ledgerAdj.set(l.property_id as number, (ledgerAdj.get(l.property_id as number) ?? 0) + v)
       }
 
-      const { data: existing } = await db.from('owner_statements').select('id, property_id, status, adjustment').eq('month', from)
+      const { data: existing } = await db.from('owner_statements').select('id, property_id, status, adjustment').eq('period_start', periodStart).eq('period_end', periodEnd)
       const ex = new Map((existing ?? []).map((x) => [x.property_id as number, x]))
 
       let kept = 0
@@ -79,12 +93,12 @@ export default async function handler(req: Req, res: Res) {
         const gst = r2(platform * gstRate / (1 + gstRate) + commission * gstRate / (1 + gstRate)) // 其中的 GST，仅供对账参考
         const ownerCosts = r2(costs.get(pid) ?? 0), claimsAmt = r2(claimsIn.get(pid) ?? 0), revComp = r2(reviewComp.get(pid) ?? 0), adj = Number(old?.adjustment ?? 0), lAdj = r2(ledgerAdj.get(pid) ?? 0)
         const payable = r2(e.rental - commission - platform - ownerCosts - revComp + claimsAmt + lAdj + adj)
-        const row = { property_id: pid, month: from, reservations: e.n, nights: e.nights, rental_income: r2(e.rental), commission_rate: cr, commission, platform_fee: platform, gst, owner_costs: ownerCosts, claims_in: claimsAmt, review_comp: revComp, ledger_adj: lAdj, payable, generated_at: new Date().toISOString() }
+        const row = { property_id: pid, month: from, period_start: periodStart, period_end: periodEnd, reservations: e.n, nights: e.nights, rental_income: r2(e.rental), commission_rate: cr, commission, platform_fee: platform, gst, owner_costs: ownerCosts, claims_in: claimsAmt, review_comp: revComp, ledger_adj: lAdj, payable, generated_at: new Date().toISOString() }
         out.push(row)
       }
       // 一次写一批（之前一套房写一次，房源多了会超时，只生成了前几十个）
       for (let i = 0; i < out.length; i += 100) {
-        const { error } = await db.from('owner_statements').upsert(out.slice(i, i + 100), { onConflict: 'property_id,month' })
+        const { error } = await db.from('owner_statements').upsert(out.slice(i, i + 100), { onConflict: 'property_id,period_start,period_end' })
         if (error) return res.status(500).json({ error: error.message })
       }
       const made = out.length
