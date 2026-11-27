@@ -5,7 +5,7 @@ import { uploadPhotos } from '../lib/photos'
 import { chipOf } from '../lib/ui'
 import { supabase } from '../lib/supabase'
 
-interface Item { id: number; urgent_label?: string | null; type: string; description: string | null; status: string; urgent: boolean; planned_date: string | null; property: { name: string } | null }
+interface Item { id: number; urgent_label?: string | null; type: string; description: string | null; status: string; urgent: boolean; planned_date: string | null; property: { name: string; address?: string | null } | null }
 interface Detail {
   order: { id: number; type: string; description: string | null; status: string; urgent: boolean; planned_date: string | null; damage_report: string | null; urgent_text?: string | null }
   property: { name: string; address: string | null }
@@ -54,9 +54,10 @@ export default function WorkerApp() {
             {[...items].sort((a, b) => rank(a) - rank(b) || (a.planned_date ?? '9999').localeCompare(b.planned_date ?? '9999')).map((o) => (
             <button key={o.id} className={`${o.urgent && o.status !== '已完成' ? (o.urgent_label === '当天入住' ? 'mcard urgent now' : 'mcard urgent') : 'mcard'}${wide && open === o.id ? ' on' : ''}`} onClick={() => setOpen(o.id)}>
               <div className="mcard-top">
-                <span className="mcard-name"><b>{o.property?.name}</b>{o.urgent && o.status !== '已完成' && <span className="chip amber">紧急{o.urgent_label ? ` · ${o.urgent_label}` : ''}</span>}</span>
+                <span className="mcard-name"><b>{o.property?.address || o.property?.name}</b>{o.urgent && o.status !== '已完成' && <span className="chip amber">紧急{o.urgent_label ? ` · ${o.urgent_label}` : ''}</span>}</span>
                 {o.status !== '已派单' && <span className={chipOf(o.status)} style={{ marginLeft: 0 }}>{o.status}</span>}
               </div>
+              {o.property?.address && <div className="muted small">{o.property.name}</div>}
               <div className="mcard-desc">{o.type} · {o.description ?? ''}</div>
               {o.planned_date && <div className="muted small">{o.type === '清洁' ? '退房日' : '计划日'}：{o.planned_date.slice(5)}</div>}
             </button>
