@@ -1,5 +1,6 @@
 import { adminClient, authenticate, requireWorker, sydneyToday, type Req, type Res } from './_lib.js'
 import { notifyGroup, GROUP_LABEL, type NotifyGroup } from './_notify.js'
+import { urgencyOf } from './_urgent.js'
 
 // 师傅 / 清洁公司提交动作：接单、提交完成、上报损坏。
 // 另外两个给员工用的通知动作（notify 派单通知、notify-test 测试消息）也放在这里：Vercel 免费版最多 12 个函数，不能再单开文件。
@@ -14,6 +15,20 @@ async function staffNotify(req: Req, res: Res, db: ReturnType<typeof adminClient
     return r.ok ? res.status(200).json({ ok: true }) : res.status(400).json({ error: r.error ?? '发送失败' })
   }
   if (!['admin', 'assistant', 'ops', 'finance'].includes(me.role)) return res.status(403).json({ error: '没有权限。' })
+  if (action === 'notify-cleaning') {   // 助理一键派发清洁单后，把这一批汇总发到清洁群（当天有入住的排最前面）
+    const ids = (Array.isArray(req.body?.orderIds) ? req.body.orderIds : []).map(Number).filter(Boolean)
+    if (!ids.length) return res.status(400).json({ error: '没有选择清洁单。' })
+    const { data: os } = await db.from('work_orders').select('id, property_id, type, planned_date, urgent, reservation_id, status, property:properties(name)').in('id', ids).eq('type', '清洁').eq('status', '已派单')
+    if (!os?.length) return res.status(200).json({ ok: true, sent: false })
+    const why = await urgencyOf(db, os as never)
+    const rank = (o: { id: number; urgent: boolean }) => (why[o.id]?.label === '当天入住' ? 0 : o.urgent ? 1 : 2)
+    const lines = [...os].sort((x, y) => rank(x as never) - rank(y as never) || String(x.planned_date).localeCompare(String(y.planned_date))).map((o) => {
+      const tag = why[o.id]?.label === '当天入住' ? '【最紧急·当天入住】' : why[o.id]?.label === '次日入住' ? '【紧急·次日入住】' : o.urgent ? '【紧急】' : ''
+      return `${tag}${(o.property as unknown as { name: string } | null)?.name ?? ''}，退房 ${String(o.planned_date ?? '').slice(5)}`
+    })
+    const r = await notifyGroup(db, 'cleaner', `新增 ${os.length} 张清洁单`, lines)
+    return r.ok ? res.status(200).json({ ok: true, sent: true }) : res.status(400).json({ error: r.error ?? '发送失败' })
+  }
   const { data: o } = await db.from('work_orders').select('id, type, description, status, assigned_to, urgent, property:properties(name)').eq('id', Number(orderId)).maybeSingle()
   if (!o || !o.assigned_to || o.status !== '已派单') return res.status(200).json({ ok: true, sent: false })
   const { data: w } = await db.from('profiles').select('name, role').eq('id', o.assigned_to as string).maybeSingle()
@@ -27,7 +42,7 @@ async function staffNotify(req: Req, res: Res, db: ReturnType<typeof adminClient
 export default async function handler(req: Req, res: Res) {
   try {
     const db = adminClient()
-    if (req.body?.action === 'notify' || req.body?.action === 'notify-test') return await staffNotify(req, res, db)
+    if (['notify', 'notify-test', 'notify-cleaning'].includes(req.body?.action)) return await staffNotify(req, res, db)
     const me = await requireWorker(req, res, db)
     if (!me) return
     const { orderId, action, amount, photos, text } = req.body ?? {}

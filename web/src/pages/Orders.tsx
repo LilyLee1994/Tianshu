@@ -13,7 +13,7 @@ interface Order {
   id: number; property_id: number; type: OType; executor: string | null; description: string | null
   assigned_to: string | null; vendor_name: string | null; planned_date: string | null; done_date: string | null
   status: string; amount: number | null; payer: string; owner_notified: boolean; urgent: boolean; created_at: string
-  photos: string[]; damage_photos: string[]; damage_report: string | null; damage_handled?: boolean; settled_at?: string | null; owner_charge?: number | null
+  photos: string[]; damage_photos: string[]; damage_report: string | null; damage_handled?: boolean; settled_at?: string | null; owner_charge?: number | null; remark?: string | null
   property: { name: string; assistant_id: string | null } | null; worker: { name: string } | null
 }
 interface Worker { id: string; name: string; role: string }
@@ -41,6 +41,7 @@ export default function Orders({ scope = 'other' }: { scope?: 'repair' | 'other'
   const [props, setProps] = useState<Prop[]>([])
   const [filter, setFilter] = useState('全部')
   const [adding, setAdding] = useState(false)
+  const [dispatching, setDispatching] = useState(false)
   const [msg, setMsg] = useState('')
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(true)
@@ -68,6 +69,15 @@ export default function Orders({ scope = 'other' }: { scope?: 'repair' | 'other'
     if (patch.status === '已派单') void callApi('worker-act', { action: 'notify', orderId: id })   // 派单后微信通知师傅（没填微信 token 就跳过）
   }
 
+  const remove = async (o: Order) => {
+    setErr(''); setMsg('')
+    const { data, error } = await supabase.from('work_orders').delete().eq('id', o.id).select('id')
+    if (error || !data?.length) { setErr(error?.message ?? '没有权限：只有这个房源的主责助理和管理员能删除，并且已完成的工单不能删。若刚更新过系统，请先运行 076 迁移。'); return }
+    setMsg('已删除这张工单。'); load()
+  }
+
+  const pendingClean = rows.filter((r) => r.type === '清洁' && r.status === '待派单' && mineAid(r.property?.assistant_id))
+
   const inScope = (r: Order) => (r.type === '维修') === isRepair
   const matchFilter = (r: Order) => filter === '全部' || (isRepair ? (filter === '进行中' ? ['已派单', '已接单'].includes(r.status) : r.status === filter) : r.type === filter)
   const list = rows.filter((r) => inScope(r) && mineAid(r.property?.assistant_id) && (matchFilter(r) || r.id === focusId))
@@ -86,7 +96,7 @@ export default function Orders({ scope = 'other' }: { scope?: 'repair' | 'other'
 
   return (
     <div>
-      <div className="title-row">{isRepair ? <h2 style={{ margin: 0 }}>维修单</h2> : <h1>工单</h1>}<button className="primary small-btn" onClick={() => setAdding(true)}>{isRepair ? '＋ 新建维修单' : '＋ 新建工单'}</button></div>
+      <div className="title-row">{isRepair ? <h2 style={{ margin: 0 }}>维修单</h2> : <h1>工单</h1>}<span className="btn-row" style={{ margin: 0 }}>{!isRepair && <button className="ghost" disabled={!pendingClean.length} onClick={() => setDispatching(true)}>一键派发清洁单（{pendingClean.length}）</button>}<button className="primary small-btn" onClick={() => setAdding(true)}>{isRepair ? '＋ 新建维修单' : '＋ 新建工单'}</button></span></div>
       <div className="pills">{(isRepair ? REPAIR_FILTERS : FILTERS).map((f) => <button key={f} className={f === filter ? 'pill on' : 'pill'} onClick={() => setFilter(f)}>{f}</button>)}</div>
       {msg && <div className="ok">{msg}</div>}
       {err && <div className="err-box">{err}</div>}
@@ -94,17 +104,19 @@ export default function Orders({ scope = 'other' }: { scope?: 'repair' | 'other'
         <table style={{ minWidth: 980 }}>
           <thead><tr><th>日期</th><th>房源</th>{!isRepair && <th>类型</th>}<th>内容</th><th>{isRepair ? '师傅' : '执行'}</th><th>状态</th><th>费用</th><th>操作</th></tr></thead>
           <tbody>
-            {list.map((o) => <OrderRow key={o.id} o={o} workers={workers} onUpdate={update} focus={o.id === focusId} hideType={isRepair} />)}
+            {list.map((o) => <OrderRow key={o.id} o={o} workers={workers} onUpdate={update} onRemove={remove} focus={o.id === focusId} hideType={isRepair} />)}
           </tbody>
         </table>
         {!list.length && <p className="muted pad">{isRepair ? '没有符合条件的维修单。' : '还没有工单。'}</p>}
       </div>
+      {dispatching && <DispatchCleaning orders={pendingClean} cleaners={workers.filter((w) => w.role === 'cleaner')} onClose={() => setDispatching(false)} onDone={(m) => { setDispatching(false); setMsg(m); load() }} />}
       {adding && <AddOrder isRepair={isRepair} props={props.filter((x) => mineAid(x.assistant_id))} onClose={() => setAdding(false)} onSaved={() => { setAdding(false); setMsg(isRepair ? '已新建维修单。' : '已新建工单。'); load() }} />}
     </div>
   )
 }
 
-function OrderRow({ o, workers, onUpdate, focus, hideType }: { o: Order; workers: Worker[]; focus?: boolean; hideType?: boolean; onUpdate: (id: number, patch: Record<string, unknown>, ok: string) => void }) {
+function OrderRow({ o, workers, onUpdate, onRemove, focus, hideType }: { o: Order; workers: Worker[]; focus?: boolean; hideType?: boolean; onUpdate: (id: number, patch: Record<string, unknown>, ok: string) => void; onRemove: (o: Order) => void }) {
+  const [editing, setEditing] = useState(false)
   const flow = flowOf(o.type, o.executor)
   const idx = flow.indexOf(o.status)
   const next = idx >= 0 && idx < flow.length - 1 ? flow[idx + 1] : ''
@@ -150,10 +162,16 @@ function OrderRow({ o, workers, onUpdate, focus, hideType }: { o: Order; workers
     <tr id={`wo-${o.id}`} className={focus ? 'focus-row' : undefined}>
       <td>{o.created_at.slice(5, 10).replace('-', '/')}</td>
       <td><b>{o.property?.name}</b>{o.urgent && <span className="chip amber">次日入住</span>}</td>
-      {!hideType && <td>{o.type}</td>}<td>{cleanDesc(o.description) || '—'}{o.damage_report && <div className="muted small">清洁上报损坏：{o.damage_report} <button className="task-btn" onClick={() => nav(`/claims?property=${o.property_id}`)}>已转入索赔，去查看</button></div>}</td><td>{who}</td>
+      {!hideType && <td>{o.type}</td>}<td>{cleanDesc(o.description) || '—'}{o.remark && <div className="muted small">备注：{o.remark}</div>}{o.damage_report && <div className="muted small">清洁上报损坏：{o.damage_report} <button className="task-btn" onClick={() => nav(`/claims?property=${o.property_id}`)}>已转入索赔，去查看</button></div>}</td><td>{who}</td>
       <td><span className={chipOf(o.status)}>{o.status}</span></td>
       <td>{o.type === '清洁' ? '—' : o.type === '维修' && o.payer === '房东' && o.owner_charge != null && Number(o.owner_charge) !== Number(o.amount) ? <>成本 {money(o.amount)}<div className="muted small">收房东 {money(o.owner_charge)}（赚 {money(Number(o.owner_charge) - Number(o.amount ?? 0))}）</div></> : `${money(o.amount)}（${o.payer}）`}{o.type === '维修' && o.status === '已完成' && <div>{o.settled_at ? <span className="chip green" style={{ marginLeft: 0 }}>已和师傅结算</span> : <span className="muted small">未和师傅结算</span>}</div>}</td>
-      <td>{action}{nPics > 0 && <button className="ghost" onClick={showPics}>看照片（{nPics}）</button>}
+      <td>{action}
+        <div className="btn-row" style={{ margin: '4px 0 0' }}>
+          <button className="task-btn" onClick={() => setEditing(true)}>编辑</button>
+          {o.status !== '已完成' && <button className="task-btn" style={{ color: '#c0392b' }} onClick={() => { if (window.confirm(`确定删除「${o.property?.name} · ${o.type}」这张工单吗？${o.status === '已派单' ? '它已经派出去了，对方会看不到这张单。' : ''}删除后不能恢复。`)) onRemove(o) }}>删除</button>}
+        </div>
+        {editing && <EditOrder o={o} onClose={() => setEditing(false)} onSave={(patch) => { setEditing(false); onUpdate(o.id, patch, '已保存修改。') }} />}
+        {nPics > 0 && <button className="ghost" onClick={showPics}>看照片（{nPics}）</button>}
         {pics && <div className="modal-bg" onClick={() => setPics(null)}><div className="modal" style={{ width: 720 }} onClick={(e) => e.stopPropagation()}><h2>{o.property?.name} · 照片</h2><div className="pics">{pics.map((u) => <a key={u} href={u} target="_blank" rel="noreferrer"><img src={u} /></a>)}{!pics.length && <p className="muted">照片加载失败。</p>}</div><button className="ghost" onClick={() => setPics(null)}>关闭</button></div></div>}
       </td>
     </tr>
@@ -192,6 +210,79 @@ function AddOrder({ props, isRepair, onClose, onSaved }: { props: Prop[]; isRepa
         {f.type === '维修' && <label className="check"><input type="checkbox" checked={f.owner_notified} onChange={(e) => setF({ ...f, owner_notified: e.target.checked })} />已经通知房东</label>}
         {err && <div className="err">{err}</div>}
         <div className="btn-row"><button className="primary small-btn" disabled={busy} onClick={save}>{busy ? '保存中…' : '保存'}</button><button className="ghost" onClick={onClose}>取消</button></div>
+      </div>
+    </div>
+  )
+}
+
+function EditOrder({ o, onClose, onSave }: { o: Order; onClose: () => void; onSave: (patch: Record<string, unknown>) => void }) {
+  const [desc, setDesc] = useState(cleanDesc(o.description) ?? '')
+  const [date, setDate] = useState(o.planned_date ?? '')
+  const [urgent, setUrgent] = useState(o.urgent)
+  const [remark, setRemark] = useState(o.remark ?? '')
+  const tag = (o.description ?? '').match(/^【索赔#\d+】/)?.[0] ?? ''   // 索赔标记原样保留，不让它被改没
+  return (
+    <div className="modal-bg" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h2>编辑工单 · {o.property?.name} · {o.type}</h2>
+        <label>内容<input value={desc} onChange={(e) => setDesc(e.target.value)} /></label>
+        <label>计划日期（清洁单就是退房日）<input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label>
+        <label className="check"><input type="checkbox" checked={urgent} onChange={(e) => setUrgent(e.target.checked)} /> 标记为紧急</label>
+        <label>备注（只有员工能看到）<textarea rows={3} value={remark} onChange={(e) => setRemark(e.target.value)} /></label>
+        <div className="btn-row">
+          <button className="primary small-btn" onClick={() => onSave({ description: `${tag}${desc.trim()}` || null, planned_date: date || null, urgent, remark: remark.trim() || null })}>保存</button>
+          <button className="ghost" onClick={onClose}>取消</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// 一键派发清洁单：选清洁公司、勾选要派的单，一次派出去并往清洁群发一条汇总
+function DispatchCleaning({ orders, cleaners, onClose, onDone }: { orders: Order[]; cleaners: Worker[]; onClose: () => void; onDone: (msg: string) => void }) {
+  const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10)
+  const sorted = [...orders].sort((a, b) => Number(b.urgent) - Number(a.urgent) || String(a.planned_date ?? '').localeCompare(String(b.planned_date ?? '')))
+  // 默认勾选：今天和明天退房的（提前一天派）；更远的不勾，需要时自己勾
+  const [sel, setSel] = useState<Set<number>>(new Set(sorted.filter((o) => (o.planned_date ?? '') <= tomorrow).map((o) => o.id)))
+  const [who, setWho] = useState(cleaners.length === 1 ? cleaners[0].id : '')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const toggle = (id: number) => setSel((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n })
+  const go = async () => {
+    setBusy(true); setErr('')
+    const ids = [...sel]
+    const { data, error } = await supabase.from('work_orders').update({ assigned_to: who, status: '已派单' }).in('id', ids).eq('status', '待派单').select('id')
+    if (error || !data?.length) { setBusy(false); setErr(error?.message ?? '没有权限，或这些单已经被派过了。'); return }
+    const [, e] = await callApi('worker-act', { action: 'notify-cleaning', orderIds: data.map((d) => d.id) })
+    setBusy(false)
+    onDone(e ? `已派发 ${data.length} 张清洁单，但清洁群通知没发出去：${e}` : `已派发 ${data.length} 张清洁单，并通知了清洁群。`)
+  }
+  return (
+    <div className="modal-bg" onClick={onClose}>
+      <div className="modal" style={{ width: 560 }} onClick={(e) => e.stopPropagation()}>
+        <h2>一键派发清洁单</h2>
+        <label>派给
+          <select value={who} onChange={(e) => setWho(e.target.value)}><option value="">选择清洁公司</option>{cleaners.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</select>
+        </label>
+        <div className="btn-row" style={{ margin: '4px 0' }}>
+          <button className="task-btn" onClick={() => setSel(new Set(sorted.map((o) => o.id)))}>全选</button>
+          <button className="task-btn" onClick={() => setSel(new Set())}>全不选</button>
+          <span className="muted small">已选 {sel.size} / {sorted.length} 张</span>
+        </div>
+        <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+          {sorted.map((o) => (
+            <label key={o.id} className="check" style={{ padding: '6px 0', borderBottom: '1px solid #eef1f4' }}>
+              <input type="checkbox" checked={sel.has(o.id)} onChange={() => toggle(o.id)} />
+              <span><b>{o.property?.name}</b> · 退房 {(o.planned_date ?? '').slice(5) || '—'}{o.urgent && <span className="chip amber">紧急</span>}</span>
+            </label>
+          ))}
+        </div>
+        <p className="muted small">派发后，清洁公司在手机端能看到这些单，清洁群会收到一条汇总，当天有入住的排最前面。默认勾选今天和明天退房的。</p>
+        {err && <div className="err">{err}</div>}
+        <div className="btn-row">
+          <button className="primary small-btn" disabled={busy || !who || !sel.size} onClick={go}>{busy ? '派发中…' : `派发 ${sel.size} 张并通知`}</button>
+          <button className="ghost" onClick={onClose}>取消</button>
+        </div>
       </div>
     </div>
   )

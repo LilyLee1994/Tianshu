@@ -1,5 +1,4 @@
 import { adminClient, authenticate, sydneyToday, type Req, type Res } from './_lib.js'
-import { notifyGroup } from './_notify.js'
 import { hostawayAll, hostawayGet, hostawayToken } from './_hostaway.js'
 
 // Hostaway 每日同步。一次调用最多跑约 45 秒，做不完就把进度存进数据库，下次调用接着做：
@@ -244,12 +243,10 @@ async function detectOrderAlerts(db: ReturnType<typeof adminClient>, today: stri
 }
 
 // 自动派清洁：今天和明天退房的订单，各生成一张清洁单。
-// 房东自己做清洁的房源跳过；只有一家启用的清洁公司账号时直接派给它，否则进“待派单”。
+// 房东自己做清洁的房源跳过。生成的清洁单都进“待派单”，由助理在工单页手动（可一键批量）派发给清洁公司，系统不自动派、不自动发通知。
 async function autoCleaning(db: ReturnType<typeof adminClient>, today: string) {
-  const { data: pr } = await db.from('properties').select('id, name, cleaning_by')
+  const { data: pr } = await db.from('properties').select('id, cleaning_by')
   const ownerCleans = new Set((pr ?? []).filter((p) => p.cleaning_by === '房东自己').map((p) => p.id as number))
-  const { data: accts } = await db.from('profiles').select('id').eq('role', 'cleaner').eq('active', true)
-  const only = accts?.length === 1 ? (accts[0].id as string) : null
 
   const cols = 'id, property_id, arrival_date, departure_date, status, guest_name'
   const { data: near } = await db.from('reservations').select(cols).not('property_id', 'is', null).gte('arrival_date', today).lte('arrival_date', addDays(today, 4))
@@ -263,22 +260,10 @@ async function autoCleaning(db: ReturnType<typeof adminClient>, today: string) {
     const urgent = arrivals.some((a) => a.property_id === r.property_id && a.id !== r.id && String(a.arrival_date) >= dep && String(a.arrival_date) <= addDays(dep, 1))
     return {
       property_id: r.property_id, type: '清洁', description: `退房清洁${r.guest_name ? `（${r.guest_name}）` : ''}`,
-      planned_date: dep, urgent, reservation_id: r.id, assigned_to: only, status: only ? '已派单' : '待派单',
+      planned_date: dep, urgent, reservation_id: r.id, assigned_to: null, status: '待派单',
     }
   })
   if (fresh.length) await db.from('work_orders').insert(fresh)
-
-  // 只在退房当天发企业微信：已派给清洁公司的 → 清洁群；没人可派的 → 助理群提醒去派单。
-  // 用 notified_at 记录发过没有（没运行 075 迁移时查不到，就不发，不影响同步）。
-  const { data: td } = await db.from('work_orders').select('id, property_id, planned_date, urgent, assigned_to').eq('type', '清洁').eq('planned_date', today).in('status', ['待派单', '已派单']).is('notified_at', null)
-  if (td?.length) {
-    const nm = new Map((pr ?? []).map((p) => [p.id as number, String(p.name ?? '')]))
-    const line = (o: (typeof td)[number]) => `${o.urgent ? '【紧急】' : ''}${nm.get(o.property_id as number) ?? ''}，今天退房`
-    const sent = td.filter((o) => o.assigned_to), wait = td.filter((o) => !o.assigned_to)
-    if (sent.length) await notifyGroup(db, 'cleaner', `今天有 ${sent.length} 张清洁单`, sent.map(line))
-    if (wait.length) await notifyGroup(db, 'assistant', `今天有 ${wait.length} 张清洁单待派单`, wait.map(line))
-    await db.from('work_orders').update({ notified_at: new Date().toISOString() }).in('id', td.map((o) => o.id))
-  }
 
   // 订单后来取消、清洁单还没做的，标记已取消
   const { data: pend } = await db.from('work_orders').select('id, reservation_id').eq('type', '清洁').not('reservation_id', 'is', null).in('status', ['待派单', '已派单'])

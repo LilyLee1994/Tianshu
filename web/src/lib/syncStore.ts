@@ -23,7 +23,7 @@ export async function startSync(onDone?: () => void) {
     }
     fails = 0
     if (r.done) { set({ msg: `同步完成：${JSON.stringify(r.summary)}` }); break }
-    const names: Record<string, string> = { reservations: `订单（已拉 ${r.resOffset} 条）`, cleaning: '自动派清洁', reviews: `评价（已拉 ${r.revOffset} 条）`, calendar: `日历价格 ${r.calOffset}/${r.total}` }
+    const names: Record<string, string> = { reservations: `订单（已拉 ${r.resOffset} 条）`, cleaning: '生成清洁单', reviews: `评价（已拉 ${r.revOffset} 条）`, calendar: `日历价格 ${r.calOffset}/${r.total}` }
     last = `上一轮结束时：${names[r.phase ?? ''] ?? r.phase}`
     set({ msg: `第 ${i + 1} 轮完成。${last}` })
   }
