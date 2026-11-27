@@ -116,14 +116,36 @@ function AddModal({ props, me, defaultProp, onClose, onSaved }: { props: Prop[];
   const [files, setFiles] = useState<File[]>([])
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  type Resv = { id: number; guest_name: string | null; arrival_date: string; departure_date: string; channel_name: string | null; nights: number | null }
+  const [resvs, setResvs] = useState<Resv[]>([])
+  const [resvId, setResvId] = useState<number | null>(null)
+  // 选了房源后，列出这套房最近一个月的订单（已经入住过的、一个月内退房的），勾选后自动填入住人、退房日和平台
+  useEffect(() => {
+    setResvs([]); setResvId(null)
+    if (!f.property_id) return
+    const t = today(), from = new Date(new Date(t).getTime() - 30 * 86400_000).toISOString().slice(0, 10)
+    supabase.from('reservations').select('id, guest_name, arrival_date, departure_date, channel_name, nights')
+      .eq('property_id', Number(f.property_id)).gte('departure_date', from).lte('arrival_date', t)
+      .not('status', 'in', '(cancelled,declined,expired,inquiry,inquiryPreapproved,inquiryDenied,inquiryTimedout,inquiryNotPossible,ownerStay)')
+      .order('departure_date', { ascending: false }).limit(30)
+      .then(({ data }) => setResvs((data ?? []) as Resv[]))
+  }, [f.property_id])
+  const pickResv = (r: Resv) => {
+    if (resvId === r.id) { setResvId(null); return }
+    setResvId(r.id)
+    const ch = (r.channel_name ?? '').toLowerCase()
+    setF((x) => ({ ...x, guest: r.guest_name ?? x.guest, date: r.departure_date, platform: ch.includes('airbnb') ? 'Airbnb' : ch.includes('booking') ? 'Booking.com' : x.platform }))
+  }
   const save = async () => {
     if (!f.property_id || !f.content.trim()) { setErr('请选房源并写清楚索赔内容。'); return }
     if (!f.guest.trim()) { setErr('请填入住人姓名。'); return }
     setBusy(true); setErr('')
-    const { data, error } = await supabase.from('claims').insert({
+    const body: Record<string, unknown> = {
       property_id: Number(f.property_id), guest_name: f.guest.trim(), platform: f.platform, occurred_date: f.date, content: f.content.trim(),
       claimed_amount: f.amount.trim() === '' ? null : Number(f.amount), created_by: me,
-    }).select('id').single()
+    }
+    let { data, error } = await supabase.from('claims').insert(resvId ? { ...body, reservation_id: resvId } : body).select('id').single()
+    if (error && resvId) ({ data, error } = await supabase.from('claims').insert(body).select('id').single())   // 还没运行 059 时，不记订单也要能保存
     if (error || !data) { setBusy(false); setErr(error?.message ?? '保存失败'); return }
     if (files.length) {
       try {
@@ -138,6 +160,17 @@ function AddModal({ props, me, defaultProp, onClose, onSaved }: { props: Prop[];
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h2>新增索赔</h2>
         <label>房源<select value={f.property_id} onChange={(e) => setF({ ...f, property_id: e.target.value })}><option value="">请选择</option>{sorted.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+        {f.property_id && (
+          <div>
+            <div className="small muted" style={{ marginBottom: 6 }}>{resvs.length ? '这套房最近一个月的订单（勾选后自动填入住人、退房日和平台）' : '这套房最近一个月没有已入住的订单，可以直接手填下面的信息。'}</div>
+            {resvs.map((r) => (
+              <label key={r.id} className="check" style={{ marginBottom: 4 }}>
+                <input type="checkbox" checked={resvId === r.id} onChange={() => pickResv(r)} />
+                {r.guest_name || '（没有姓名）'} · {r.arrival_date.slice(5)} → {r.departure_date.slice(5)}{r.nights ? `（${r.nights} 晚）` : ''} · {r.channel_name ?? '—'}
+              </label>
+            ))}
+          </div>
+        )}
         <label>向谁索赔（平台或保险）<select value={f.platform} onChange={(e) => setF({ ...f, platform: e.target.value })}>{PLATFORMS.map((x) => <option key={x}>{x}</option>)}</select></label>
         <label>发生日期（退房日）<input type="date" value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} /></label>
         <label>入住人姓名<input value={f.guest} onChange={(e) => setF({ ...f, guest: e.target.value })} placeholder="订单上的客人姓名" /></label>
