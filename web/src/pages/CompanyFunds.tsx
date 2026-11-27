@@ -29,13 +29,17 @@ export default function CompanyFunds() {
   useEffect(() => { if (isAssistant && profile) coveredAssistantIds(profile.id).then(setCover) }, [profile?.id, isAssistant]) // eslint-disable-line react-hooks/exhaustive-deps
   const [rows, setRows] = useState<Row[]>([])
   const [props, setProps] = useState<Prop[]>([])
-  const [month, setMonth] = useState('')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [platform, setPlatform] = useState('')
   const [kind, setKind] = useState('')
   const [rec, setRec] = useState('')
   const [q, setQ] = useState('')
+  // 上面填的是“条件”，点“搜索”才生效（回车也行）
+  const [ap, setAp] = useState({ from: '', to: '', platform: '', kind: '', rec: '', q: '' })
+  const doSearch = () => setAp({ from, to, platform, kind, rec, q })
+  const reset = () => { setFrom(''); setTo(''); setPlatform(''); setKind(''); setRec(''); setQ(''); setAp({ from: '', to: '', platform: '', kind: '', rec: '', q: '' }) }
+  const quick = (a: string, b: string) => { setFrom(a); setTo(b); setAp({ from: a, to: b, platform, kind, rec, q }) }
   const [edit, setEdit] = useState<Row | 'new' | null>(null)
   const [msg, setMsg] = useState('')
 
@@ -52,16 +56,15 @@ export default function CompanyFunds() {
   const myProps = useMemo(() => isAssistant ? props.filter((x) => !!x.assistant_id && cover.has(x.assistant_id)) : props, [props, isAssistant, cover])
   const shown = useMemo(() => rows.filter((r) => {
     if (isAssistant && !(r.property?.assistant_id && cover.has(r.property.assistant_id))) return false
-    if (month && !r.occurred_date.startsWith(month)) return false
-    if (from && r.occurred_date < from) return false
-    if (to && r.occurred_date > to) return false
-    if (platform && r.platform !== platform) return false
-    if (kind && r.kind !== kind) return false
-    if (rec === 'no' && r.reconciled) return false
-    if (rec === 'yes' && !r.reconciled) return false
-    if (q && !`${r.property?.name} ${r.guest_name ?? ''} ${r.order_ref ?? ''} ${r.reason ?? ''}`.toLowerCase().includes(q.toLowerCase())) return false
+    if (ap.from && r.occurred_date < ap.from) return false
+    if (ap.to && r.occurred_date > ap.to) return false
+    if (ap.platform && r.platform !== ap.platform) return false
+    if (ap.kind && r.kind !== ap.kind) return false
+    if (ap.rec === 'no' && r.reconciled) return false
+    if (ap.rec === 'yes' && !r.reconciled) return false
+    if (ap.q && !`${r.property?.name} ${r.guest_name ?? ''} ${r.order_ref ?? ''} ${r.reason ?? ''}`.toLowerCase().includes(ap.q.toLowerCase())) return false
     return true
-  }), [rows, isAssistant, cover, month, from, to, platform, kind, rec, q])
+  }), [rows, isAssistant, cover, ap])
   const inn = shown.filter((r) => r.amount > 0).reduce((n, r) => n + Number(r.amount), 0)
   const out = shown.filter((r) => r.amount < 0).reduce((n, r) => n - Number(r.amount), 0)
   const todo = shown.filter((r) => !r.reconciled).length
@@ -75,25 +78,28 @@ export default function CompanyFunds() {
     const head = ['日期', '房源', '平台', '客人', '订单号', '入住', '退房', '类型', '类别', '金额', '责任方', '对房东结算', '已对账', '原因']
     const lines = shown.map((r) => [r.occurred_date, r.property?.name ?? '', r.platform, r.guest_name ?? '', r.order_ref ?? '', r.check_in ?? '', r.check_out ?? '', r.kind, r.category, r.amount, r.payer ?? '', r.owner_effect, r.reconciled ? '是' : '否', r.reason ?? ''])
     const csv = '\ufeff' + [head, ...lines].map((l) => l.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
-    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); a.download = `公司款项${month ? '_' + month : ''}${from || to ? `_${from || '起'}至${to || '今'}` : ''}.csv`; a.click()
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); a.download = `公司款项${ap.from || ap.to ? `_${ap.from || '起'}至${ap.to || '今'}` : ''}.csv`; a.click()
   }
 
   return (
     <div>
       <div className="title-row"><h1>公司款项</h1><button onClick={() => setEdit('new')}>+ 新增款项</button></div>
       <p className="muted small">记录每一笔和订单相关的收款、退款、押金、线下转账。退款、退押金、平台扣款记为支出。“对房东结算”选“补房东”或“扣房东”的，会自动计入当月房东结算（选“无”表示公司自己消化，或已在 Hostaway 订单里改好）。</p>
-      <div className="btn-row" style={{ marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-        <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} title="按日期的月份筛选" />
-        <select value={platform} onChange={(e) => setPlatform(e.target.value)}><option value="">全部平台</option>{PLATFORMS.map((x) => <option key={x}>{x}</option>)}</select>
-        <select value={kind} onChange={(e) => setKind(e.target.value)}><option value="">全部类型</option>{KINDS.map((x) => <option key={x}>{x}</option>)}</select>
-        <select value={rec} onChange={(e) => setRec(e.target.value)}><option value="">对账：全部</option><option value="no">未对账</option><option value="yes">已对账</option></select>
-        <input placeholder="搜索房源、客人、订单号、原因" value={q} onChange={(e) => setQ(e.target.value)} style={{ minWidth: 240 }} />
-        {month && <button className="ghost" onClick={() => setMonth('')}>清除月份</button>}
-        <span className="muted small">日期从</span>
+      <div className="btn-row" style={{ marginBottom: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <span className="muted small">日期</span>
         <input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
         <span className="muted small">到</span>
         <input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
-        {(from || to) && <button className="ghost" onClick={() => { setFrom(''); setTo('') }}>清除日期</button>}
+        <button className="ghost" onClick={() => { const n = new Date(), y = n.getFullYear(), m = n.getMonth(); const f = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; quick(f(new Date(y, m, 1)), f(new Date(y, m + 1, 0))) }}>本月</button>
+        <button className="ghost" onClick={() => { const n = new Date(), y = n.getFullYear(), m = n.getMonth(); const f = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; quick(f(new Date(y, m - 1, 1)), f(new Date(y, m, 0))) }}>上个月</button>
+      </div>
+      <div className="btn-row" style={{ marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+        <select value={platform} onChange={(e) => setPlatform(e.target.value)}><option value="">全部平台</option>{PLATFORMS.map((x) => <option key={x}>{x}</option>)}</select>
+        <select value={kind} onChange={(e) => setKind(e.target.value)}><option value="">全部类型</option>{KINDS.map((x) => <option key={x}>{x}</option>)}</select>
+        <select value={rec} onChange={(e) => setRec(e.target.value)}><option value="">对账：全部</option><option value="no">未对账</option><option value="yes">已对账</option></select>
+        <input placeholder="搜索房源、客人、订单号、原因" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') doSearch() }} style={{ minWidth: 240 }} />
+        <button onClick={doSearch}>搜索</button>
+        <button className="ghost" onClick={reset}>重置</button>
         <button className="ghost" onClick={exportCsv}>导出 CSV</button>
       </div>
       <p className="muted small" style={{ margin: '0 0 8px' }}>

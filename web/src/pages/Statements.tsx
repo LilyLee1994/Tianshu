@@ -25,7 +25,10 @@ export default function Statements() {
   useEffect(() => { if (isAssistant && profile) coveredAssistantIds(profile.id).then(setCover) }, [profile?.id, isAssistant]) // eslint-disable-line react-hooks/exhaustive-deps
   const [from, setFrom] = useState(monthRange(-1)[0])
   const [to, setTo] = useState(monthRange(-1)[1])
+  const [dFrom, setDFrom] = useState(from)       // 日期先填在这里，点“查询”才生效
+  const [dTo, setDTo] = useState(to)
   const label = from === to ? from : `${from} 至 ${to}`
+  const query = (a = dFrom, b = dTo) => { if (!a || !b || a > b) { setMsg('请选好开始和结束日期（开始不能晚于结束）。'); return }; setMsg(''); setDFrom(a); setDTo(b); setFrom(a); setTo(b) }
   const [rows, setRows] = useState<St[]>([])
   const [q, setQ] = useState('')
   const [busy, setBusy] = useState(false)
@@ -79,11 +82,12 @@ export default function Statements() {
       <h1>房东结算</h1>
       <p className="muted small">应付房东 = 房费（不含清洁费，按退房日算在哪个日期范围）先扣平台费 16.5%，再在剩下的金额上扣佣金（比例 × 1.1，默认 15% → 16.5%）；再 + 当月到账的索赔、± 手工调整、− 房东承担的维修费和差评赔偿。平台费和佣金已含 GST，“其中 GST”仅供对账。确认后不能再改。</p>
       <div className="btn-row" style={{ marginBottom: 12 }}>
-        <input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} title="开始日期（含当天）" />
+        <input type="date" value={dFrom} max={dTo || undefined} onChange={(e) => setDFrom(e.target.value)} title="开始日期（含当天）" />
         <span className="muted small">到</span>
-        <input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} title="结束日期（含当天）" />
-        <button className="ghost" onClick={() => { const r = monthRange(-1); setFrom(r[0]); setTo(r[1]) }}>上个月</button>
-        <button className="ghost" onClick={() => { const r = monthRange(0); setFrom(r[0]); setTo(r[1]) }}>本月</button>
+        <input type="date" value={dTo} min={dFrom || undefined} onChange={(e) => setDTo(e.target.value)} title="结束日期（含当天）" />
+        <button onClick={() => query()}>查询</button>
+        <button className="ghost" onClick={() => { const r = monthRange(-1); query(r[0], r[1]) }}>上个月</button>
+        <button className="ghost" onClick={() => { const r = monthRange(0); query(r[0], r[1]) }}>本月</button>
         <input placeholder="搜索房源" value={q} onChange={(e) => setQ(e.target.value)} />
         {canGenerate && <button disabled={busy} onClick={generate}>{busy ? '生成中…' : rows.length ? '重新计算草稿' : '生成这段时间的草稿'}</button>}
         <button className="ghost" onClick={exportCsv} disabled={!shown.length}>导出 CSV</button>
