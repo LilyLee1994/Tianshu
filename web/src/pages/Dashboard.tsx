@@ -69,14 +69,19 @@ export default function Dashboard() {
         if (snap) {
           const todaySyd = new Date().toLocaleDateString('en-CA', { timeZone: 'Australia/Sydney' })
           const end = new Date(new Date(todaySyd).getTime() + 29 * 86400_000).toISOString().slice(0, 10)
-          const [{ data: cal }, { data: hp }] = await Promise.all([
-            supabase.from('calendar_snapshots').select('property_id, status, is_available').eq('snapshot_date', snap).gte('date', todaySyd).lte('date', end).limit(20000),
-            supabase.from('properties').select('id, name, assistant_id').not('hostaway_id', 'is', null),
-          ])
+          // 接口一次最多返回 1000 行，所以分页取，不然只有前面几十个房源有数据，后面的会被误报
+          const cal: { property_id: number; status: string | null; is_available: boolean | null }[] = []
+          for (let from = 0; from < 30000; from += 1000) {
+            const { data: part } = await supabase.from('calendar_snapshots').select('property_id, status, is_available')
+              .eq('snapshot_date', snap).gte('date', todaySyd).lte('date', end).order('property_id').order('date').range(from, from + 999)
+            cal.push(...(part ?? []) as typeof cal)
+            if ((part?.length ?? 0) < 1000) break
+          }
+          const { data: hp } = await supabase.from('properties').select('id, name, assistant_id').not('hostaway_id', 'is', null).limit(2000)
           const stale = Math.round((new Date(todaySyd).getTime() - new Date(snap).getTime()) / 86400_000)
           if (profile?.role === 'admin' && stale >= 2) t.push({ tag: '日历同步', text: `Hostaway 日历已经 ${stale} 天没更新了，可订检查暂时不准。`, to: '/data', cls: 'red', lv: 'red' })
           const by = new Map<number, { blocked: number; days: number }>()
-          for (const c of (cal ?? []) as { property_id: number; status: string | null; is_available: boolean | null }[]) {
+          for (const c of cal) {
             const e = by.get(c.property_id) ?? { blocked: 0, days: 0 }
             e.days++
             if (!c.is_available && c.status !== 'reserved') e.blocked++
