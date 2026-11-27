@@ -33,7 +33,7 @@ function pageHtml(worker: string, period: string, rows: PdfRow[], first: boolean
       <div style="font-size:26px;font-weight:700;color:${BRAND}">${fmt(total)}</div></div></div>` : ''
   return `<div class="pdf-page" style="width:794px;height:1123px;box-sizing:border-box;padding:44px 48px 36px;background:#fff;color:#1b2430;font-family:'PingFang SC','Microsoft YaHei','Noto Sans CJK SC',system-ui,sans-serif;position:relative">
     ${first ? header(worker, period) : `<div style="font-size:13px;color:#7b8794;padding-bottom:12px;border-bottom:2px solid ${BRAND};margin-bottom:18px"><b style="color:${BRAND}">Wise Stay</b> · 维修对账单 · ${esc(worker)} · ${esc(period)}</div>`}
-    <table style="width:698px;table-layout:fixed;border-collapse:collapse"><thead><tr>${th('日期', false, 'width:104px;border-radius:8px 0 0 0')}${th('房源', false, 'width:150px')}${th('事项')}${th('金额', true, 'width:120px;border-radius:0 8px 0 0')}</tr></thead><tbody>${body}</tbody></table>
+    <table style="width:698px;min-width:0;table-layout:fixed;border-collapse:collapse"><thead><tr>${th('日期', false, 'width:104px;border-radius:8px 0 0 0')}${th('房源', false, 'width:150px')}${th('事项')}${th('金额', true, 'width:120px;border-radius:0 8px 0 0')}</tr></thead><tbody>${body}</tbody></table>
     ${totalBox}
     <div style="position:absolute;left:48px;right:48px;bottom:30px;display:flex;justify-content:space-between;font-size:11px;color:#9aa5b1;border-top:1px solid #e3e8ee;padding-top:10px"><span>Wise Stay · 生成日期 ${today}</span><span>第 ${pageNo} / ${pages} 页</span></div>
   </div>`
