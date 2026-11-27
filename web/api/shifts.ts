@@ -31,6 +31,18 @@ export default async function handler(req: Req, res: Res) {
       if (R.some((d) => H.includes(d))) return res.status(400).json({ error: '同一天不能既休息又居家。' })
       const { data: m } = await db.from('shift_months').select('status').eq('user_id', c.id).eq('month', `${month}-01`).maybeSingle()
       if (m?.status === '已提交') return res.status(400).json({ error: '这个月已经提交并锁定，要改请先申请变更。' })
+      // 搭档 / 备选跟着提交一起保存（页面传了才处理）
+      if (partner_id !== undefined || backup_id !== undefined) {
+        const pid = partner_id || null, bid = backup_id || null
+        if (pid === c.id || bid === c.id) return res.status(400).json({ error: '搭档和备选不能是自己。' })
+        if (pid && pid === bid) return res.status(400).json({ error: '搭档和备选不能是同一个人。' })
+        for (const id of [pid, bid].filter(Boolean)) {
+          const { data: pr } = await db.from('profiles').select('role, active').eq('id', id).maybeSingle()
+          if (!pr || pr.role !== 'assistant' || !pr.active) return res.status(400).json({ error: '搭档只能选在职的客服助理。' })
+        }
+        const { error: pe } = await db.from('profiles').update({ partner_id: pid, backup_id: bid }).eq('id', c.id)
+        if (pe) return res.status(500).json({ error: pe.message })
+      }
       const from = `${month}-01`, to = nextMonth(month)
       await db.from('shifts').delete().eq('user_id', c.id).gte('date', from).lt('date', to)
       const rows = [...R.map((d) => ({ user_id: c.id, date: d, kind: '休息' })), ...H.map((d) => ({ user_id: c.id, date: d, kind: '居家' }))]

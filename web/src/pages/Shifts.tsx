@@ -37,6 +37,7 @@ export default function Shifts() {
   const [saving, setSaving] = useState(false)   // 保存搭档 / 备选时用，不影响“提交并锁定”按钮
   const [msg, setMsg] = useState('')
   const [reason, setReason] = useState('')
+  const [pick, setPick] = useState<{ partner: string; backup: string } | null>(null)   // 没锁定时，搭档/备选先记在页面上，提交时一起保存
 
   const load = useCallback(async () => {
     const from = `${month}-01`, last = dayStr(month, daysIn(month))
@@ -58,6 +59,7 @@ export default function Shifts() {
 
   const name = (id: string | null) => team.find((t) => t.id === id)?.name ?? '—'
   const me = team.find((t) => t.id === profile?.id)
+  useEffect(() => { if (me) setPick({ partner: me.partner_id ?? '', backup: me.backup_id ?? '' }) }, [me?.id, me?.partner_id, me?.backup_id]) // eslint-disable-line react-hooks/exhaustive-deps
   const notOpen = month > openMonth()
   const locked = status[profile?.id ?? ''] === '已提交' || notOpen
   const nRest = Object.values(mine).filter((k) => k === '休息').length
@@ -86,7 +88,7 @@ export default function Shifts() {
     if (!window.confirm('提交后会锁定，要改需要管理员批准。确定提交吗？')) return
     const rest = Object.entries(mine).filter(([, k]) => k === '休息').map(([d]) => dayStr(month, Number(d)))
     const home = Object.entries(mine).filter(([, k]) => k === '居家').map(([d]) => dayStr(month, Number(d)))
-    await act({ action: 'submit', month, rest, home }, '已提交并锁定。')
+    await act({ action: 'submit', month, rest, home, partner_id: pick?.partner ?? '', backup_id: pick?.backup ?? '' }, '已提交并锁定。')
   }
 
   // 其他人这天的安排（我自己的不算），用来选日子时避开别人
@@ -131,17 +133,18 @@ export default function Shifts() {
           {me && (<>
             <div className="btn-row" style={{ alignItems: 'center' }}>
               <span className="small">搭档（你休息时帮你看房源）</span>
-              <select value={me.partner_id ?? ''} disabled={saving} onChange={(e) => act({ action: 'set_partner', user_id: me.id, partner_id: e.target.value, backup_id: me.backup_id }, '已保存。')}>
-                <option value="">请选择</option>{team.filter((x) => x.id !== me.id && x.id !== me.backup_id).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+              <select value={locked ? me.partner_id ?? '' : pick?.partner ?? ''} disabled={saving} onChange={(e) => locked ? act({ action: 'set_partner', user_id: me.id, partner_id: e.target.value, backup_id: me.backup_id }, '已保存。') : setPick({ partner: e.target.value, backup: pick?.backup === e.target.value ? '' : pick?.backup ?? '' })}>
+                <option value="">请选择</option>{team.filter((x) => x.id !== me.id && x.id !== (locked ? me.backup_id : pick?.backup)).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
               </select>
               <span className="small">备选（搭档也休息时）</span>
-              <select value={me.backup_id ?? ''} disabled={saving} onChange={(e) => act({ action: 'set_partner', user_id: me.id, partner_id: me.partner_id, backup_id: e.target.value }, '已保存。')}>
-                <option value="">不设置</option>{team.filter((x) => x.id !== me.id && x.id !== me.partner_id).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+              <select value={locked ? me.backup_id ?? '' : pick?.backup ?? ''} disabled={saving} onChange={(e) => locked ? act({ action: 'set_partner', user_id: me.id, partner_id: me.partner_id, backup_id: e.target.value }, '已保存。') : setPick({ partner: pick?.partner ?? '', backup: e.target.value })}>
+                <option value="">不设置</option>{team.filter((x) => x.id !== me.id && x.id !== (locked ? me.partner_id : pick?.partner)).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
               </select>
             </div>
             {saving && <p className="muted small">保存中…</p>}
             {msg && <p className={msg.startsWith('已') ? 'muted small' : 'err'}>{msg}</p>}
-            {!me.partner_id && <p className="warn small">还没选搭档：你休息的那几天，房源会转给管理员。</p>}
+            {!(locked ? me.partner_id : pick?.partner) && <p className="warn small">还没选搭档：你休息的那几天，房源会转给管理员。</p>}
+            {!locked && <p className="muted small">搭档和备选会在你点“提交并锁定”时一起保存。</p>}
           </>)}
           {myCover.length > 0 && (
             <div className="small" style={{ marginBottom: 8 }}>
