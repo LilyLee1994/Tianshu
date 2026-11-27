@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import DateRange from '../lib/DateRange'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { supabase } from '../lib/supabase'
@@ -94,9 +95,7 @@ export default function RepairSettle() {
       <p className="muted small">按完成日期列出这段时间所有已完成的维修单，按师傅分组，方便月底对账、付钱。点“标记已结算”后，这些单就不会再出现在“未结算”里。</p>
       <div className="btn-row" style={{ marginBottom: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <span className="muted small">完成日期</span>
-        <input type="date" value={dFrom} onChange={(e) => { setDFrom(e.target.value); if (dTo < e.target.value) setDTo(e.target.value) }} />
-        <span className="muted small">到</span>
-        <input type="date" value={dTo} onChange={(e) => { setDTo(e.target.value); if (dFrom > e.target.value) setDFrom(e.target.value) }} />
+        <DateRange from={dFrom} to={dTo} onChange={(a, b) => { setDFrom(a); setDTo(b) }} />
         <button className="ghost" onClick={() => { const r = monthRange(0); query(r[0], r[1]) }}>本月</button>
         <button className="ghost" onClick={() => { const r = monthRange(-1); query(r[0], r[1]) }}>上个月</button>
       </div>

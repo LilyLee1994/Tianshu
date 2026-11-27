@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import DateRange from '../lib/DateRange'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
@@ -98,9 +99,7 @@ export default function CompanyFunds() {
       <p className="muted small">记录每一笔和订单相关的收款、退款、押金、线下转账。支出类型有：退款、协商退款、清洁问题退款、退押金、线下转出、平台扣款、赔付房东、垫付费用，金额都填正数，系统自动记成支出。“对房东结算”选“补房东”或“扣房东”的，会自动计入当月房东结算（选“无”表示公司自己消化，或已在 Hostaway 订单里改好）。索赔到账的钱，只有公司留下的部分会记在这里，给房东的部分不记。</p>
       <div className="btn-row" style={{ marginBottom: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         <span className="muted small">日期</span>
-        <input type="date" value={from} onChange={(e) => { setFrom(e.target.value); if (to && to < e.target.value) setTo(e.target.value) }} />
-        <span className="muted small">到</span>
-        <input type="date" value={to} onChange={(e) => { setTo(e.target.value); if (from && from > e.target.value) setFrom(e.target.value) }} />
+        <DateRange from={from} to={to} onChange={(a, b) => { setFrom(a); setTo(b) }} />
         <button className="ghost" onClick={() => { const n = new Date(), y = n.getFullYear(), m = n.getMonth(); const f = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; quick(f(new Date(y, m, 1)), f(new Date(y, m + 1, 0))) }}>本月</button>
         <button className="ghost" onClick={() => { const n = new Date(), y = n.getFullYear(), m = n.getMonth(); const f = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; quick(f(new Date(y, m - 1, 1)), f(new Date(y, m, 0))) }}>上个月</button>
       </div>

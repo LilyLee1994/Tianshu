@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import DateRange from '../lib/DateRange'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { callApi } from '../lib/api'
@@ -120,9 +121,7 @@ export default function Statements() {
       <h1>房东结算</h1>
       <p className="muted small">应付房东 = 房费（不含清洁费，按退房日算在哪个日期范围）先扣平台费 16.5%，再在剩下的金额上扣佣金（比例 × 1.1，默认 15% → 16.5%）；再 + 这段时间到账、给房东的索赔，− 房东承担的维修费和差评赔偿，± “其他补扣”（公司款项里标为补房东 / 扣房东的）和手工调整。表里绿色 + 号是加给房东，红色 − 号是从房东扣。平台费和佣金已含 GST，“其中 GST”仅供对账。确认后不能再改。</p>
       <div className="btn-row" style={{ marginBottom: 12 }}>
-        <input type="date" value={dFrom} onChange={(e) => { setDFrom(e.target.value); if (dTo < e.target.value) setDTo(e.target.value) }} title="开始日期（含当天）" />
-        <span className="muted small">到</span>
-        <input type="date" value={dTo} onChange={(e) => { setDTo(e.target.value); if (dFrom > e.target.value) setDFrom(e.target.value) }} title="结束日期（含当天）" />
+        <DateRange from={dFrom} to={dTo} onChange={(a, b) => { setDFrom(a); setDTo(b) }} fromTitle="开始日期（含当天）" toTitle="结束日期（含当天）" />
         <button onClick={() => query()}>查询</button>
         <button className="ghost" onClick={() => { const r = monthRange(-1); query(r[0], r[1]) }}>上个月</button>
         <button className="ghost" onClick={() => { const r = monthRange(0); query(r[0], r[1]) }}>本月</button>

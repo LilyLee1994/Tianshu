@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import DateRange from '../lib/DateRange'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { money } from '../lib/ui'
@@ -78,9 +79,7 @@ export default function CleanerBill() {
       <p className="muted small">额外清洁、跑腿等清洁公司做的额外事项，在“款项明细”里新增一条，类型选“清洁公司费用”。这里按日期汇总成账单，勾选后可以下载 PDF 发给清洁公司核对，付完钱再标记已结算。</p>
       <div className="btn-row" style={{ marginBottom: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <span className="muted small">日期</span>
-        <input type="date" value={dFrom} onChange={(e) => { setDFrom(e.target.value); if (dTo < e.target.value) setDTo(e.target.value) }} />
-        <span className="muted small">到</span>
-        <input type="date" value={dTo} onChange={(e) => { setDTo(e.target.value); if (dFrom > e.target.value) setDFrom(e.target.value) }} />
+        <DateRange from={dFrom} to={dTo} onChange={(a, b) => { setDFrom(a); setDTo(b) }} />
         <button className="ghost" onClick={() => { const r = monthRange(0); query(r[0], r[1]) }}>本月</button>
         <button className="ghost" onClick={() => { const r = monthRange(-1); query(r[0], r[1]) }}>上个月</button>
       </div>
