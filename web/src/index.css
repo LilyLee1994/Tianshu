@@ -190,3 +190,10 @@ td .ghost, td button.ghost { white-space: nowrap; }
 .chip { white-space: nowrap; line-height: 1.5; align-self: center; flex: 0 0 auto; }
 .btn-row { align-items: center; flex-wrap: wrap; }
 td .btn-row { flex-wrap: nowrap; }
+
+.handover { border: 1px solid #e1e5ea; border-radius: 12px; padding: 14px 18px; margin: 14px 0; background: #fbfcfd; display: flex; flex-direction: column; gap: 12px; }
+.handover-head { font-size: 15px; }
+.handover-sec { display: flex; flex-direction: column; gap: 6px; }
+.handover-note { font-size: 14px; line-height: 1.5; }
+.handover-item { font-size: 14px; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.handover-add { display: flex; gap: 8px; margin-top: 4px; } .handover-add input { flex: 1; }
