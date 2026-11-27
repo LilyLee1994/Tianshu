@@ -1,0 +1,11 @@
+{
+  "appId": "au.wisestay.tianshu",
+  "appName": "天枢",
+  "webDir": "www",
+  "server": {
+    "url": "https://tianshu-five.vercel.app",
+    "cleartext": false,
+    "androidScheme": "https"
+  },
+  "android": { "allowMixedContent": false }
+}

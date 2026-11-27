@@ -1,0 +1,11 @@
+{
+  "name": "tianshu-android",
+  "private": true,
+  "version": "1.0.0",
+  "description": "天枢 师傅端 Android 壳：用 WebView 打开线上网站，网站更新后不用重新打包",
+  "dependencies": {
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/cli": "^7.0.0",
+    "@capacitor/core": "^7.0.0"
+  }
+}

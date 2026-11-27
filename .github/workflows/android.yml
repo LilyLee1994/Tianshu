@@ -1,0 +1,30 @@
+name: 打包 Android APK
+
+# 在 GitHub 页面 Actions → “打包 Android APK” → Run workflow 手动点一次，几分钟后在这次运行页面底部下载 APK。
+# 这个 App 只是个“壳”，里面打开的是线上网站，网站更新后师傅们不用重新装 APK。
+on:
+  workflow_dispatch:
+  push:
+    paths: ['android-app/**', '.github/workflows/android.yml']
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+      - name: 安装依赖并同步
+        working-directory: android-app
+        run: |
+          npm ci
+          npx cap sync android
+      - name: 打包
+        working-directory: android-app/android
+        run: ./gradlew assembleDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tianshu-android-apk
+          path: android-app/android/app/build/outputs/apk/debug/app-debug.apk
