@@ -9,3 +9,8 @@ drop policy if exists app_settings_admin on public.app_settings;
 create policy app_settings_admin on public.app_settings
   for all using (public.is_admin()) with check (public.is_admin());
 notify pgrst, 'reload schema';
+
+-- 这个项目的表需要显式授权给登录用户（行级权限仍然只有管理员能读写）
+grant select, insert, update, delete on public.app_settings to authenticated;
+grant all on public.app_settings to service_role;
+notify pgrst, 'reload schema';
