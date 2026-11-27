@@ -35,7 +35,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     Promise.all([
-      supabase.from('work_orders').select('id, status, type, description, property:properties(name)').not('status', 'in', '(已完成,已取消)'),
+      supabase.from('work_orders').select('id, status, type, description, property:properties(name, assistant_id)').not('status', 'in', '(已完成,已取消)'),
       supabase.from('properties').select('id, name, assistant_id, property_contracts(*)').eq('legacy', false),
       supabase.from('reviews').select('id, channel_name, rating, reviewed_at, property:properties(name, assistant_id)').not('rating', 'is', null).gte('reviewed_at', new Date(Date.now() - 14 * 86400_000).toISOString()).order('reviewed_at', { ascending: false }).limit(500),
       supabase.from('review_actions').select('review_id, status').limit(5000),
@@ -121,7 +121,8 @@ export default function Dashboard() {
         }
       }
       let pending = 0, doing = 0
-      for (const x of (o.data ?? []) as unknown as { id: number; status: string; type: string; description: string; property: { name: string } }[]) {
+      for (const x of (o.data ?? []) as unknown as { id: number; status: string; type: string; description: string; property: { name: string; assistant_id: string | null } }[]) {
+        if (!mine(x.property?.assistant_id)) continue
         const label = `${x.property?.name} · ${x.type} · ${x.description ?? ''}`
         if (x.status === '待派单') { pending++; t.push({ tag: '待派单', text: label, to: `/orders?id=${x.id}`, cls: 'amber', lv: 'red' }) }
         else if (x.status === '待确认费用') { pending++; t.push({ tag: '确认费用', text: label, to: `/orders?id=${x.id}`, cls: 'purple', lv: 'orange' }) }
@@ -133,11 +134,12 @@ export default function Dashboard() {
       const readySet = new Set<number>()   // 已经出了「可上线」便签的房源
       for (const r of (p.data ?? []) as unknown as { id: number; name: string; assistant_id: string | null; property_contracts: never }[]) {
         const c = r.property_contracts as { end_date: string | null } | null
-        if (statusOf(c as never) === '待登记合同') { incomplete++; t.push({ tag: '合同', text: `${r.name} 水电燃气信息还没填完整，填完才能上线`, to: `/properties?id=${r.id}`, cls: 'amber', lv: 'yellow' }) }
+        const isMine = mine(r.assistant_id)
+        if (isMine && statusOf(c as never) === '待登记合同') { incomplete++; t.push({ tag: '合同', text: `${r.name} 水电燃气信息还没填完整，填完才能上线`, to: `/properties?id=${r.id}`, cls: 'amber', lv: 'yellow' }) }
         // 资料填齐、运营阶段还是“筹备中”：可以上线了，提醒负责的助理去上线
         if (statusOf(c as never) === '可上线' && (mine(r.assistant_id) || launchMine.has(r.id))) { readySet.add(r.id); t.push({ tag: '可上线', text: `${tagOf(r.assistant_id)}${r.name} 资料已填齐，可以上线了；上线后把运营阶段改为“运营中”`, to: `/properties?id=${r.id}`, cls: 'blue', lv: 'orange' }) }
         const d = daysTo(c?.end_date ?? null)
-        if (d !== null && d >= 0 && d <= 60) t.push({ tag: '到期', text: `${r.name} 合同 ${d} 天后到期`, to: `/contracts?id=${r.id}`, cls: 'amber', lv: d <= 7 ? 'red' : d <= 30 ? 'orange' : 'yellow' })
+        if (isMine && d !== null && d >= 0 && d <= 60) t.push({ tag: '到期', text: `${r.name} 合同 ${d} 天后到期`, to: `/contracts?id=${r.id}`, cls: 'amber', lv: d <= 7 ? 'red' : d <= 30 ? 'orange' : 'yellow' })
       }
       // 「可上线」便签和「上线」步骤便签是同一件事，合并成一张：有「可上线」就不再出「上线」那张
       for (const n of stepNotes) if (!(n.isLaunch && readySet.has(n.pid))) t.push(n.todo)
