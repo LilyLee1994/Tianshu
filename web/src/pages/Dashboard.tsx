@@ -62,6 +62,35 @@ export default function Dashboard() {
       for (const x of (dmRows ?? []) as unknown as { id: number; damage_report: string; property: { name: string; assistant_id: string | null } | null }[]) {
         if (mine(x.property?.assistant_id ?? null)) t.push({ tag: '清洁上报损坏', text: `${tagOf(x.property?.assistant_id ?? null)}${x.property?.name} · ${x.damage_report}`, to: `/orders?id=${x.id}`, cls: 'amber', lv: 'red' })
       }
+      // 房源可订检查：用每天同步下来的 Hostaway 日历，看未来 30 天。停用类房源（名字带 不做/old/long/backup/备用 等）不检查
+      try {
+        const { data: lastSnap } = await supabase.from('calendar_snapshots').select('snapshot_date').order('snapshot_date', { ascending: false }).limit(1)
+        const snap = lastSnap?.[0]?.snapshot_date as string | undefined
+        if (snap) {
+          const todaySyd = new Date().toLocaleDateString('en-CA', { timeZone: 'Australia/Sydney' })
+          const end = new Date(new Date(todaySyd).getTime() + 29 * 86400_000).toISOString().slice(0, 10)
+          const [{ data: cal }, { data: hp }] = await Promise.all([
+            supabase.from('calendar_snapshots').select('property_id, status, is_available').eq('snapshot_date', snap).gte('date', todaySyd).lte('date', end).limit(20000),
+            supabase.from('properties').select('id, name, assistant_id').not('hostaway_id', 'is', null),
+          ])
+          const stale = Math.round((new Date(todaySyd).getTime() - new Date(snap).getTime()) / 86400_000)
+          if (profile?.role === 'admin' && stale >= 2) t.push({ tag: '日历同步', text: `Hostaway 日历已经 ${stale} 天没更新了，可订检查暂时不准。`, to: '/data', cls: 'red', lv: 'red' })
+          const by = new Map<number, { blocked: number; days: number }>()
+          for (const c of (cal ?? []) as { property_id: number; status: string | null; is_available: boolean | null }[]) {
+            const e = by.get(c.property_id) ?? { blocked: 0, days: 0 }
+            e.days++
+            if (!c.is_available && c.status !== 'reserved') e.blocked++
+            by.set(c.property_id, e)
+          }
+          const stop = /不做|old|long|back ?up|备用|暂时关闭|对账/i
+          for (const h of (hp ?? []) as { id: number; name: string; assistant_id: string | null }[]) {
+            if (stop.test(h.name) || !mine(h.assistant_id)) continue
+            const e = by.get(h.id)
+            if (!e || e.days < 20) { t.push({ tag: '房源可订', text: `${tagOf(h.assistant_id)}${h.name} · Hostaway 里没有未来 30 天的日历数据，房源可能已下架或没同步上`, to: `/properties?id=${h.id}`, cls: 'amber', lv: 'yellow' }); continue }
+            if (e.blocked >= 25) t.push({ tag: '房源可订', text: `${tagOf(h.assistant_id)}${h.name} · 未来 30 天有 ${e.blocked} 天被关闭，不可订（不是已订出）`, to: `/properties?id=${h.id}`, cls: 'amber', lv: 'red' })
+          }
+        }
+      } catch { /* 检查失败不影响其他待办 */ }
       // 新房源上线流程：
       // 1) 管理员：每套还没走完的房源一张便签，写明进度和下一步
       // 2) 每一步指定了对接人的，对接人自己的待办里有一张（状态跟着这一步走，完成后自动消失）
