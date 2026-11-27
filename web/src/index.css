@@ -214,3 +214,5 @@ td .btn-row { flex-wrap: nowrap; }
 @keyframes loading-spin { to { transform: rotate(360deg); } }
 @keyframes loading-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
 @keyframes loading-dot { 0%, 80%, 100% { opacity: 0.2; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
+/* 在页面内容区里加载时，不盖住左侧菜单 */
+main .loading-screen { left: 220px; }
