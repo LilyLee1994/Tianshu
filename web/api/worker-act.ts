@@ -17,7 +17,8 @@ export default async function handler(req: Req, res: Res) {
 
     if (action === 'accept') {
       if (me.role !== 'repairman' || o.status !== '已派单') return res.status(400).json({ error: '现在不能接单。' })
-      await db.from('work_orders').update({ status: '已接单' }).eq('id', id)
+      const u = await db.from('work_orders').update({ status: '已接单' }).eq('id', id)
+      if (u.error) return res.status(400).json({ error: `保存失败：${u.error.message}` })
       return res.status(200).json({ ok: true })
     }
     if (action === 'complete') {
@@ -26,18 +27,21 @@ export default async function handler(req: Req, res: Res) {
         const n = Number(amount)
         if (amount === '' || amount === undefined || Number.isNaN(n) || n < 0) return res.status(400).json({ error: '请填实际费用（数字）。' })
         if (!paths.length) return res.status(400).json({ error: '请至少上传一张前后对比照片。' })
-        await db.from('work_orders').update({ status: '待确认费用', amount: n, photos: paths, done_date: sydneyToday() }).eq('id', id)
+        const u = await db.from('work_orders').update({ status: '待确认费用', amount: n, photos: paths, done_date: sydneyToday() }).eq('id', id)
+        if (u.error) return res.status(400).json({ error: `保存失败：${u.error.message}` })
       } else {
         if (o.status !== '已派单') return res.status(400).json({ error: '这张任务现在不能提交。' })
         if (!paths.length) return res.status(400).json({ error: '请至少上传一张清洁照片。' })
-        await db.from('work_orders').update({ status: '已完成', photos: paths, done_date: sydneyToday() }).eq('id', id)
+        const u = await db.from('work_orders').update({ status: '已完成', photos: paths, done_date: sydneyToday() }).eq('id', id)
+        if (u.error) return res.status(400).json({ error: `保存失败：${u.error.message}` })
       }
       return res.status(200).json({ ok: true })
     }
     if (action === 'damage') {
       if (me.role !== 'cleaner' || o.status !== '已派单') return res.status(400).json({ error: '现在不能上报。' })
       if (!String(text ?? '').trim() || !paths.length) return res.status(400).json({ error: '请写清楚损坏情况，并至少上传一张照片。' })
-      await db.from('work_orders').update({ damage_report: String(text).trim(), damage_photos: paths }).eq('id', id)
+      const u = await db.from('work_orders').update({ damage_report: String(text).trim(), damage_photos: paths }).eq('id', id)
+      if (u.error) return res.status(400).json({ error: `保存失败：${u.error.message}` })
       return res.status(200).json({ ok: true })
     }
     return res.status(400).json({ error: '未知操作。' })
