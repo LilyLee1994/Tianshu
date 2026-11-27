@@ -3,9 +3,15 @@
   "appName": "天枢",
   "webDir": "www",
   "server": {
-    "url": "https://tianshu-five.vercel.app",
-    "cleartext": false,
-    "androidScheme": "https"
+    "androidScheme": "https",
+    "allowNavigation": [
+      "tianshu-five.vercel.app",
+      "*.vercel.app",
+      "*.supabase.co"
+    ],
+    "cleartext": false
   },
-  "android": { "allowMixedContent": false }
+  "android": {
+    "allowMixedContent": false
+  }
 }
