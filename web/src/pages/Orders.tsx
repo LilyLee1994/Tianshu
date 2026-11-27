@@ -3,6 +3,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { chipOf, money, today } from '../lib/ui'
 import { signedUrls } from '../lib/photos'
+import { useAuth } from '../lib/auth'
+import { coveredAssistantIds } from '../lib/cover'
 
 type OType = '清洁' | '维修' | '除草' | '除虫'
 interface Order {
@@ -10,10 +12,10 @@ interface Order {
   assigned_to: string | null; vendor_name: string | null; planned_date: string | null; done_date: string | null
   status: string; amount: number | null; payer: string; owner_notified: boolean; urgent: boolean; created_at: string
   photos: string[]; damage_photos: string[]; damage_report: string | null; damage_handled?: boolean
-  property: { name: string } | null; worker: { name: string } | null
+  property: { name: string; assistant_id: string | null } | null; worker: { name: string } | null
 }
 interface Worker { id: string; name: string; role: string }
-interface Prop { id: number; name: string }
+interface Prop { id: number; name: string; assistant_id: string | null }
 
 export const flowOf = (type: OType, exec: string | null) => {
   if (type === '清洁') return ['待派单', '已派单', '已完成']
@@ -24,6 +26,11 @@ export const flowOf = (type: OType, exec: string | null) => {
 const FILTERS = ['全部', '清洁', '维修', '除草', '除虫']
 
 export default function Orders() {
+  const { profile } = useAuth()
+  const isAssistant = profile?.role === 'assistant'
+  const [cover, setCover] = useState<Set<string>>(new Set())
+  useEffect(() => { if (isAssistant && profile) coveredAssistantIds(profile.id).then(setCover) }, [profile?.id, isAssistant]) // eslint-disable-line react-hooks/exhaustive-deps
+  const mineAid = (aid: string | null | undefined) => !isAssistant || (!!aid && cover.has(aid))
   const [rows, setRows] = useState<Order[]>([])
   const [workers, setWorkers] = useState<Worker[]>([])
   const [props, setProps] = useState<Prop[]>([])
@@ -37,9 +44,9 @@ export default function Orders() {
 
   const load = useCallback(async () => {
     const [o, w, p] = await Promise.all([
-      supabase.from('work_orders').select('*, property:properties(name), worker:profiles!assigned_to(name)').order('created_at', { ascending: false }),
+      supabase.from('work_orders').select('*, property:properties(name, assistant_id), worker:profiles!assigned_to(name)').order('created_at', { ascending: false }),
       supabase.from('profiles').select('id, name, role').in('role', ['repairman', 'cleaner']).eq('active', true),
-      supabase.from('properties').select('id, name').order('name'),
+      supabase.from('properties').select('id, name, assistant_id').order('name'),
     ])
     if (o.error) setErr(o.error.message); else setRows(o.data as unknown as Order[])
     if (w.data) setWorkers(w.data as Worker[])
@@ -55,7 +62,7 @@ export default function Orders() {
     setMsg(ok); load()
   }
 
-  const list = rows.filter((r) => filter === '全部' || r.type === filter || r.id === focusId)
+  const list = rows.filter((r) => mineAid(r.property?.assistant_id) && (filter === '全部' || r.type === filter || r.id === focusId))
   // 从总览点进来：滚到这张工单并高亮
   useEffect(() => {
     if (!focusId || loading) return
@@ -78,7 +85,7 @@ export default function Orders() {
         </table>
         {!list.length && <p className="muted pad">还没有工单。</p>}
       </div>
-      {adding && <AddOrder props={props} onClose={() => setAdding(false)} onSaved={() => { setAdding(false); setMsg('已新建工单。'); load() }} />}
+      {adding && <AddOrder props={props.filter((x) => mineAid(x.assistant_id))} onClose={() => setAdding(false)} onSaved={() => { setAdding(false); setMsg('已新建工单。'); load() }} />}
     </div>
   )
 }
