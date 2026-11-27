@@ -35,8 +35,8 @@ export default function WorkerApp() {
         <>
           {loading && <p className="muted">加载中…</p>}
           {!loading && !items.length && <p className="muted pad">这里没有任务。助理派单后会出现在这里。</p>}
-          {items.map((o) => (
-            <button key={o.id} className="mcard" onClick={() => setOpen(o.id)}>
+          {[...items].sort((a, b) => Number(a.status === '已完成') - Number(b.status === '已完成') || Number(b.urgent) - Number(a.urgent) || (a.planned_date ?? '9999').localeCompare(b.planned_date ?? '9999')).map((o) => (
+            <button key={o.id} className={o.urgent && o.status !== '已完成' ? 'mcard urgent' : 'mcard'} onClick={() => setOpen(o.id)}>
               <div><b>{o.property?.name}</b>{o.urgent && <span className="chip amber">紧急</span>}</div>
               <div>{o.type} · {o.description ?? ''}</div>
               <div><span className={chipOf(o.status)} style={{ marginLeft: 0 }}>{o.status}</span></div>
