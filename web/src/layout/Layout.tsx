@@ -8,7 +8,6 @@ export const NAV: { to: string; label: string; roles: Role[] }[] = [
   { to: '/', label: '总览', roles: ALL },
   { to: '/properties', label: '房源档案', roles: ALL },
   { to: '/orders', label: '工单', roles: ALL },
-  { to: '/cleaning', label: '清洁记录', roles: ALL },
   { to: '/onboarding', label: '新房源上线', roles: ALL },
   { to: '/alerts', label: '订单异常', roles: ALL },
   { to: '/claims', label: '索赔', roles: ALL },
