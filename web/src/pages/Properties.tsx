@@ -346,13 +346,12 @@ function Detail({ row: r, canEdit, isAdmin, onEdit, onChanged }: { row: Row; can
   return (
     <section className="card">
       <div className="title-row">
-        <h2>{r.name} <span className={statusClass(st)}>{st}</span></h2>
+        <h2>{r.name} <span className={statusClass(st)}>{st}</span> <span className={d?.self_operated ? 'chip amber' : 'chip'}>{d?.self_operated ? '自营' : '房东托管'}</span></h2>
         <span className="btn-row" style={{ margin: 0 }}><button className="ghost" onClick={() => nav(`/reviews?property=${r.id}`)}>差评</button><button className="ghost" onClick={() => nav(`/claims?property=${r.id}`)}>索赔</button>{canEdit && <button className="ghost" onClick={onEdit}>编辑</button>}{isAdmin && <button className="ghost" onClick={() => setHist(true)}>修改记录</button>}</span>
       </div>
       <dl>
         <dt>地址</dt><dd>{dash(r.address)}</dd>
         <dt>区域</dt><dd>{dash(r.region)}</dd>
-        <dt>运营模式</dt><dd>{d?.self_operated ? <span className="chip amber" style={{ marginLeft: 0 }}>自营（公司租下来运营）</span> : '房东托管'}</dd>
         <dt>主责助理</dt><dd>{dash(r.assistant?.name)}</dd>
         <dt>清洁由谁做</dt><dd>{r.cleaning_by === '房东自己' ? '房东自己' : 'Alisa'}</dd>
         <dt>户型</dt><dd>{dash(d?.bedrooms)} 房 {dash(d?.bathrooms)} 卫 · 可住 {dash(d?.max_guests)} 人</dd>
