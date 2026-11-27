@@ -14,7 +14,7 @@ const chip = (s: string) => (s === '已赔付' || s === '客人直接赔付' ? '
 
 interface Claim {
   id: number; property_id: number; guest_name?: string | null; platform: string; occurred_date: string; content: string; claimed_amount: number | null
-  status: (typeof STATUSES)[number]; paid_amount: number | null; paid_date: string | null; photos: string[]
+  status: (typeof STATUSES)[number]; paid_amount: number | null; owner_amount?: number | null; paid_date: string | null; photos: string[]
   property: { name: string; assistant_id: string | null } | null; creator: { name: string } | null; created_by: string | null
 }
 interface Prop { id: number; name: string; assistant_id: string | null }
@@ -73,7 +73,7 @@ export default function Claims() {
   return (
     <div>
       <div className="title-row"><h1>索赔</h1><button onClick={() => setAdding(true)}>+ 新增索赔</button></div>
-      <p className="muted small">流程：清洁工上报损坏 → 客服联系客人（联系客人中）→ 客人愿意赔就记“客人直接赔付”，不愿意再整理证据提交平台。<b>已赔付 / 客人直接赔付的到账金额会自动进当月房东结算</b>，被驳回或放弃的不进。</p>
+      <p className="muted small">流程：清洁工上报损坏 → 客服联系客人（联系客人中）→ 客人愿意赔就记“客人直接赔付”，不愿意再整理证据提交平台。<b>已赔付 / 客人直接赔付的钱，给房东的那部分会自动进房东结算</b>，被驳回或放弃的不进。</p>
       {onlyProp && <p className="btn-row" style={{ alignItems: 'center' }}><span className="chip blue" style={{ marginLeft: 0 }}>只看：{props.find((x) => x.id === onlyProp)?.name ?? '这个房源'}</span><button className="ghost" onClick={() => setSp({})}>看全部房源</button></p>}
       <div className="btn-row" style={{ marginBottom: 12 }}>
         <select value={status} onChange={(e) => setStatus(e.target.value)}>
@@ -91,7 +91,7 @@ export default function Claims() {
               <td>{r.occurred_date.slice(5)}</td><td>{r.property?.name}</td><td>{r.guest_name || '—'}</td><td>{r.platform}</td>
               <td style={{ maxWidth: 280 }}>{r.content}</td><td>{r.creator?.name ?? '—'}</td>
               <td>{money(r.claimed_amount)}</td><td><span className={chip(r.status)} style={{ marginLeft: 0 }}>{r.status}</span></td>
-              <td>{PAID.includes(r.status) ? <>{money(r.paid_amount)} <span className="muted small">{r.paid_date?.slice(5)}</span></> : '—'}</td>
+              <td>{PAID.includes(r.status) ? <>{money(r.paid_amount)} <span className="muted small">{r.paid_date?.slice(5)}</span>{r.owner_amount != null && Number(r.owner_amount) !== Number(r.paid_amount) && <div className="muted small">给房东 {money(r.owner_amount)}</div>}</> : '—'}</td>
               <td className="btn-row" style={{ margin: 0 }}>
                 <button className="ghost" onClick={() => setUpd(r)}>更新状态</button>
                 <button className="ghost" onClick={() => makeRepair(r)}>生成维修工单</button>
@@ -188,14 +188,17 @@ function UpdateModal({ row, onClose, onSaved }: { row: Claim; onClose: () => voi
   const [status, setStatus] = useState<string>(row.status)
   const [paid, setPaid] = useState(row.paid_amount != null ? String(row.paid_amount) : '')
   const [date, setDate] = useState(row.paid_date ?? today())
+  const [ownerAmt, setOwnerAmt] = useState(row.owner_amount != null ? String(row.owner_amount) : '')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const isPaid = PAID.includes(status)
   const save = async () => {
     if (isPaid && (paid.trim() === '' || Number.isNaN(Number(paid)))) { setErr('已赔付 / 客人直接赔付，要填到账金额。'); return }
+    const oa = ownerAmt.trim() === '' ? null : Number(ownerAmt)
+    if (isPaid && oa !== null && (Number.isNaN(oa) || oa < 0 || oa > Number(paid))) { setErr('给房东的金额要在 0 到到账金额之间；不填就是全部给房东。'); return }
     setBusy(true); setErr('')
     const { error } = await supabase.from('claims').update({
-      status, paid_amount: isPaid ? Number(paid) : null, paid_date: isPaid ? date : null, updated_at: new Date().toISOString(),
+      status, paid_amount: isPaid ? Number(paid) : null, owner_amount: isPaid ? oa : null, paid_date: isPaid ? date : null, updated_at: new Date().toISOString(),
     }).eq('id', row.id)
     setBusy(false)
     if (error) setErr(error.message); else onSaved()
@@ -208,7 +211,8 @@ function UpdateModal({ row, onClose, onSaved }: { row: Claim; onClose: () => voi
         <label>状态<select value={status} onChange={(e) => setStatus(e.target.value)}>{STATUSES.map((s) => <option key={s}>{s}</option>)}</select></label>
         {isPaid && <>
           <label>到账金额（$）<input value={paid} onChange={(e) => setPaid(e.target.value)} /></label>
-          <label>到账日期（决定进哪个月的房东结算）<input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label>
+          <label>其中给房东的金额（$，不填 = 全部给房东）<input value={ownerAmt} onChange={(e) => setOwnerAmt(e.target.value)} placeholder={paid || '例如：到账 2000，给房东 1000'} /></label>
+          <label>到账日期（决定进哪个日期范围的房东结算）<input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label>
         </>}
         {err && <div className="err">{err}</div>}
         <div className="btn-row"><button disabled={busy} onClick={save}>{busy ? '保存中…' : '保存'}</button><button className="ghost" onClick={onClose}>取消</button></div>

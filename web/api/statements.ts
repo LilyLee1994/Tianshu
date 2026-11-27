@@ -59,8 +59,13 @@ export default async function handler(req: Req, res: Res) {
 
       // 当月已赔付的索赔（按到账日期）
       const claimsIn = new Map<number, number>()
-      const { data: cl } = await db.from('claims').select('property_id, paid_amount').in('status', ['已赔付', '客人直接赔付']).gte('paid_date', from).lt('paid_date', to)
-      for (const c of cl ?? []) claimsIn.set(c.property_id as number, (claimsIn.get(c.property_id as number) ?? 0) + (Number(c.paid_amount) || 0))
+      // 给房东的金额：填了“给房东的金额”就按它算，没填就是到账金额全部（还没运行 062 时没有这一列，退回只读到账金额）
+      type ClRow = { property_id: number; paid_amount: number | null; owner_amount?: number | null }
+      let cl: ClRow[] = []
+      const q1 = await db.from('claims').select('property_id, paid_amount, owner_amount').in('status', ['已赔付', '客人直接赔付']).gte('paid_date', from).lt('paid_date', to)
+      if (q1.error) cl = ((await db.from('claims').select('property_id, paid_amount').in('status', ['已赔付', '客人直接赔付']).gte('paid_date', from).lt('paid_date', to)).data ?? []) as ClRow[]
+      else cl = (q1.data ?? []) as ClRow[]
+      for (const c of cl) claimsIn.set(c.property_id, (claimsIn.get(c.property_id) ?? 0) + (Number(c.owner_amount ?? c.paid_amount) || 0))
 
       // 当月处理的差评赔偿里，房东承担的部分
       const reviewComp = new Map<number, number>()
