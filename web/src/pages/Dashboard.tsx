@@ -17,7 +17,7 @@ type Lv = 'red' | 'orange' | 'yellow' | 'blue'
 interface Todo { tag: string; text: string; to: string; cls: string; lv: Lv }
 const LV: { k: Lv; label: string; hint: string }[] = [
   { k: 'red', label: '紧急', hint: '差评、订单异常、待派单、合同 7 天内到期、优先级高的待办' },
-  { k: 'orange', label: '尽快', hint: '索赔待提交、确认费用、通知房东、明天入住但清洁没完成、合同 30 天内到期、已过期的待办' },
+  { k: 'orange', label: '尽快', hint: '索赔待提交、确认费用、通知房东、明天入住但清洁没完成、特殊折扣待平账、合同 30 天内到期、已过期的待办' },
   { k: 'yellow', label: '留意', hint: '确认完成、合同信息没填完、排班变更申请、合同 60 天内到期、优先级中的待办' },
   { k: 'blue', label: '日常', hint: '排班填写提醒、优先级低的待办' },
 ]
@@ -136,6 +136,12 @@ export default function Dashboard() {
         else if (x.status === '待通知房东') t.push({ tag: '通知房东', text: label, to: `${x.type === '维修' ? '/repairs' : '/orders'}?id=${x.id}`, cls: 'amber', lv: 'orange' })
         else if (x.status === '房东已完成') t.push({ tag: '确认', text: `${label}，房东说已完成，请确认`, to: `${x.type === '维修' ? '/repairs' : '/orders'}?id=${x.id}`, cls: 'purple', lv: 'yellow' })
         else doing++
+      }
+      // 特殊折扣还没在订单里平账 → 财务 / 管理员处理
+      if (profile?.role === 'admin' || profile?.role === 'finance') {
+        const sd = await supabase.from('ledger').select('id, amount, guest_name, occurred_date, property:properties(name)').eq('owner_effect', '特殊折扣').is('order_adjusted_at', null).order('occurred_date').limit(100)
+        for (const x of (sd.data ?? []) as unknown as { id: number; amount: number; guest_name: string | null; occurred_date: string; property: { name: string } | null }[])
+          t.push({ tag: '特殊折扣待平账', text: `${x.property?.name ?? ''}${x.guest_name ? ` · ${x.guest_name}` : ''} · $${Math.abs(Number(x.amount)).toFixed(2).replace(/\.00$/, '')}（${x.occurred_date.slice(5)}），请到 Hostaway 订单里平账，平完后在公司款项点“标记已平账”`, to: '/company', cls: 'purple', lv: 'orange' })
       }
       // 明天有客人入住，今天（或更早）的清洁单还没完成 → 助理联系清洁公司
       {
