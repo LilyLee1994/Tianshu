@@ -13,7 +13,7 @@ const PLATFORMS = ['Airbnb', 'Booking.com', '其他'] as const
 const chip = (s: string) => (s === '已赔付' || s === '客人直接赔付' ? 'chip green' : s === '被驳回' || s === '放弃' ? 'chip gray' : s === '待提交' ? 'chip amber' : 'chip blue')
 
 interface Claim {
-  id: number; property_id: number; platform: string; occurred_date: string; content: string; claimed_amount: number | null
+  id: number; property_id: number; guest_name?: string | null; platform: string; occurred_date: string; content: string; claimed_amount: number | null
   status: (typeof STATUSES)[number]; paid_amount: number | null; paid_date: string | null; photos: string[]
   property: { name: string; assistant_id: string | null } | null; creator: { name: string } | null; created_by: string | null
 }
@@ -63,7 +63,7 @@ export default function Claims() {
     if (isAssistant && !(r.property?.assistant_id && cover.has(r.property.assistant_id))) return false
     if (onlyProp && r.property_id !== onlyProp) return false
     if (status && r.status !== status) return false
-    if (q && !`${r.property?.name} ${r.content}`.toLowerCase().includes(q.toLowerCase())) return false
+    if (q && !`${r.property?.name} ${r.guest_name ?? ''} ${r.content}`.toLowerCase().includes(q.toLowerCase())) return false
     return true
   }), [rows, isAssistant, status, q, profile, onlyProp, cover])
 
@@ -84,11 +84,11 @@ export default function Claims() {
       </div>
       {msg && <p className="muted">{msg}</p>}
       <div className="table-wrap">
-        <table style={{ minWidth: 960 }}>
-          <thead><tr><th>日期</th><th>房源</th><th>平台</th><th>内容</th><th>发起人</th><th>申报金额</th><th>状态</th><th>到账金额</th><th></th></tr></thead>
+        <table style={{ minWidth: 1040 }}>
+          <thead><tr><th>日期</th><th>房源</th><th>入住人</th><th>平台</th><th>内容</th><th>发起人</th><th>申报金额</th><th>状态</th><th>到账金额</th><th></th></tr></thead>
           <tbody>{shown.map((r) => (
             <tr key={r.id} id={`cl-${r.id}`} className={r.id === focusId ? 'focus-row' : undefined}>
-              <td>{r.occurred_date.slice(5)}</td><td>{r.property?.name}</td><td>{r.platform}</td>
+              <td>{r.occurred_date.slice(5)}</td><td>{r.property?.name}</td><td>{r.guest_name || '—'}</td><td>{r.platform}</td>
               <td style={{ maxWidth: 280 }}>{r.content}</td><td>{r.creator?.name ?? '—'}</td>
               <td>{money(r.claimed_amount)}</td><td><span className={chip(r.status)} style={{ marginLeft: 0 }}>{r.status}</span></td>
               <td>{PAID.includes(r.status) ? <>{money(r.paid_amount)} <span className="muted small">{r.paid_date?.slice(5)}</span></> : '—'}</td>
@@ -112,15 +112,16 @@ export default function Claims() {
 
 function AddModal({ props, me, defaultProp, onClose, onSaved }: { props: Prop[]; me: string; defaultProp: number | null; onClose: () => void; onSaved: () => void }) {
   const sorted = useMemo(() => [...props].sort((a, b) => Number(b.assistant_id === me) - Number(a.assistant_id === me) || a.name.localeCompare(b.name)), [props, me])
-  const [f, setF] = useState({ property_id: defaultProp && props.some((x) => x.id === defaultProp) ? String(defaultProp) : '', platform: 'Airbnb', date: today(), content: '', amount: '' })
+  const [f, setF] = useState({ property_id: defaultProp && props.some((x) => x.id === defaultProp) ? String(defaultProp) : '', platform: 'Airbnb', date: today(), guest: '', content: '', amount: '' })
   const [files, setFiles] = useState<File[]>([])
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const save = async () => {
     if (!f.property_id || !f.content.trim()) { setErr('请选房源并写清楚索赔内容。'); return }
+    if (!f.guest.trim()) { setErr('请填入住人姓名。'); return }
     setBusy(true); setErr('')
     const { data, error } = await supabase.from('claims').insert({
-      property_id: Number(f.property_id), platform: f.platform, occurred_date: f.date, content: f.content.trim(),
+      property_id: Number(f.property_id), guest_name: f.guest.trim(), platform: f.platform, occurred_date: f.date, content: f.content.trim(),
       claimed_amount: f.amount.trim() === '' ? null : Number(f.amount), created_by: me,
     }).select('id').single()
     if (error || !data) { setBusy(false); setErr(error?.message ?? '保存失败'); return }
@@ -139,6 +140,7 @@ function AddModal({ props, me, defaultProp, onClose, onSaved }: { props: Prop[];
         <label>房源<select value={f.property_id} onChange={(e) => setF({ ...f, property_id: e.target.value })}><option value="">请选择</option>{sorted.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
         <label>向哪个平台索赔<select value={f.platform} onChange={(e) => setF({ ...f, platform: e.target.value })}>{PLATFORMS.map((x) => <option key={x}>{x}</option>)}</select></label>
         <label>发生日期（退房日）<input type="date" value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} /></label>
+        <label>入住人姓名<input value={f.guest} onChange={(e) => setF({ ...f, guest: e.target.value })} placeholder="订单上的客人姓名" /></label>
         <label>索赔内容<input value={f.content} onChange={(e) => setF({ ...f, content: e.target.value })} placeholder="例如：客人损坏沙发垫" /></label>
         <label>申报金额（$）<input value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} /></label>
         <label>证据照片（可选，可多张）<input type="file" accept="image/*" multiple onChange={(e) => setFiles([...(e.target.files ?? [])])} /></label>
@@ -237,7 +239,7 @@ function EvidenceModal({ claim, onClose }: { claim: Claim; onClose: () => void }
   return (
     <div className="modal-bg" onClick={onClose}>
       <div className="modal" style={{ width: 720 }} onClick={(e) => e.stopPropagation()}>
-        <h2>证据照片 · {claim.property?.name}</h2>
+        <h2>证据照片 · {claim.property?.name}{claim.guest_name ? ` · ${claim.guest_name}` : ''}</h2>
         <p className="muted small">提交平台需要：入住前的清洁照 + 清洁工上报的损坏照。</p>
         {!groups && <p className="muted">加载中…</p>}
         {(groups ?? []).map((g) => (

@@ -43,13 +43,15 @@ export default async function handler(req: Req, res: Res) {
       const u = await db.from('work_orders').update({ damage_report: String(text).trim(), damage_photos: paths }).eq('id', id)
       if (u.error) return res.status(400).json({ error: `保存失败：${u.error.message}` })
       // 同时在“索赔”里生成一条待提交的草稿（带照片），助理在索赔页处理
-      const { data: wo } = await db.from('work_orders').select('property_id').eq('id', id).maybeSingle()
+      const { data: wo } = await db.from('work_orders').select('property_id, reservation_id').eq('id', id).maybeSingle()
       if (wo) {
+        let guest: string | null = null
+        if (wo.reservation_id) guest = ((await db.from('reservations').select('guest_name').eq('id', wo.reservation_id).maybeSingle()).data?.guest_name as string | null) ?? null
         const row = { property_id: wo.property_id, platform: 'Airbnb', occurred_date: sydneyToday(), content: `【清洁上报损坏】${String(text).trim()}`, status: '待提交', photos: paths }
         const ex = await db.from('claims').select('id').eq('work_order_id', id).maybeSingle()
         const r = ex.data ? await db.from('claims').update({ content: row.content, photos: paths }).eq('id', ex.data.id)
-          : await db.from('claims').insert({ ...row, work_order_id: id })
-        if (r.error) await db.from('claims').insert(row) // 还没运行 049 时，不带关联也要生成
+          : await db.from('claims').insert({ ...row, work_order_id: id, guest_name: guest })
+        if (r.error) await db.from('claims').insert(row) // 还没运行 049 / 051 时，不带关联和入住人也要生成
         await db.from('work_orders').update({ damage_handled: true }).eq('id', id)
       }
       return res.status(200).json({ ok: true })
