@@ -68,8 +68,11 @@ export default function CompanyFunds() {
     return true
   }), [rows, isAssistant, cover, ap])
   const visible = rows.filter((r) => !isAssistant || (r.property?.assistant_id && cover.has(r.property.assistant_id))).length
-  const inn = shown.filter((r) => r.amount > 0).reduce((n, r) => n + Number(r.amount), 0)
-  const out = shown.filter((r) => r.amount < 0).reduce((n, r) => n - Number(r.amount), 0)
+  // 对房东结算选“特殊折扣”的，钱已经在 Hostaway 订单里平掉了，对公司来说最终是 0，不计入收入、支出和合计
+  const counted = shown.filter((r) => r.owner_effect !== '特殊折扣')
+  const flat = shown.length - counted.length
+  const inn = counted.filter((r) => r.amount > 0).reduce((n, r) => n + Number(r.amount), 0)
+  const out = counted.filter((r) => r.amount < 0).reduce((n, r) => n - Number(r.amount), 0)
   const todo = shown.filter((r) => !r.reconciled).length
 
   const toggleRec = async (r: Row) => {
@@ -79,7 +82,7 @@ export default function CompanyFunds() {
 
   const exportCsv = () => {
     const head = ['日期', '房源', '平台', '客人', '订单号', '入住', '退房', '类型', '类别', '金额', '责任方', '对房东结算', '已对账', '原因']
-    const lines = shown.map((r) => [r.occurred_date, r.property?.name ?? '', r.platform, r.guest_name ?? '', r.order_ref ?? '', r.check_in ?? '', r.check_out ?? '', r.kind, r.category, r.amount, r.payer ?? '', r.owner_effect, r.reconciled ? '是' : '否', r.reason ?? ''])
+    const lines = shown.map((r) => [r.occurred_date, r.property?.name ?? '', r.platform, r.guest_name ?? '', r.order_ref ?? '', r.check_in ?? '', r.check_out ?? '', r.kind, r.category, r.owner_effect === '特殊折扣' ? 0 : r.amount, r.payer ?? '', r.owner_effect, r.reconciled ? '是' : '否', r.reason ?? ''])
     const csv = '\ufeff' + [head, ...lines].map((l) => l.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); a.download = `公司款项${ap.from || ap.to ? `_${ap.from || '起'}至${ap.to || '今'}` : ''}.csv`; a.click()
   }
@@ -106,7 +109,7 @@ export default function CompanyFunds() {
         <button className="ghost" onClick={exportCsv}>导出 CSV</button>
       </div>
       <p className="muted small" style={{ margin: '0 0 8px' }}>
-        {shown.length} 条 · 收入 <span style={{ color: '#1f6b34' }}>{m(inn)}</span> · 支出 <span style={{ color: '#a3271c' }}>{m(out)}</span> · 合计 {inn - out < 0 ? '−' : ''}{m(inn - out)} · 未对账 {todo} 条
+        {shown.length} 条 · 收入 <span style={{ color: '#1f6b34' }}>{m(inn)}</span> · 支出 <span style={{ color: '#a3271c' }}>{m(out)}</span> · 合计 {inn - out < 0 ? '−' : ''}{m(inn - out)}{flat > 0 && <span className="muted small">（另有 {flat} 条特殊折扣已在订单平账，按 $0 计）</span>} · 未对账 {todo} 条
       </p>
       {msg && <p className="err">{msg}</p>}
       <div className="table-wrap">
@@ -117,7 +120,11 @@ export default function CompanyFunds() {
               <td style={{ whiteSpace: 'nowrap' }}>{r.occurred_date.slice(5)}</td><td>{r.property?.name}</td><td>{r.platform}</td>
               <td>{r.guest_name ?? '—'}{r.order_ref && <div className="muted small">{r.order_ref}</div>}</td>
               <td style={{ whiteSpace: 'nowrap' }}>{r.kind} · {r.category}</td>
-              <td style={{ textAlign: 'right', whiteSpace: 'nowrap', color: r.amount > 0 ? '#1f6b34' : '#a3271c' }}>{r.amount > 0 ? '+' : '−'}{m(Number(r.amount))}</td>
+              <td style={{ textAlign: 'right', whiteSpace: 'nowrap', color: r.owner_effect === '特殊折扣' ? '#7b8794' : r.amount > 0 ? '#1f6b34' : '#a3271c' }}>
+                {r.owner_effect === '特殊折扣'
+                  ? <><span style={{ textDecoration: 'line-through' }}>{r.amount > 0 ? '+' : '−'}{m(Number(r.amount))}</span><div className="small">订单平账，计 $0</div></>
+                  : <>{r.amount > 0 ? '+' : '−'}{m(Number(r.amount))}</>}
+              </td>
               <td>{r.payer ?? '—'}</td>
               <td>{r.owner_effect !== '无' ? <span className="chip amber" style={{ marginLeft: 0 }}>{r.owner_effect}</span> : '—'}</td>
               <td>{canReconcile ? <input type="checkbox" style={{ width: 'auto', minHeight: 0 }} checked={r.reconciled} onChange={() => toggleRec(r)} /> : r.reconciled ? '✓' : '—'}</td>
@@ -184,7 +191,7 @@ function EditModal({ row, props, isAdmin, onClose, onSaved }: { row: Row | null;
         </div>
         <p className="muted small" style={{ margin: 0 }}>这一笔记为 <b style={{ color: out ? '#a3271c' : '#1f6b34' }}>{out ? '支出' : '收入'}</b>。</p>
         <label>对房东结算<select value={f.owner_effect} onChange={(e) => set('owner_effect', e.target.value)}>{EFFECTS.map((x) => <option key={x}>{x}</option>)}</select></label>
-        <p className="muted small" style={{ margin: 0 }}>无＝公司自己消化，或已在 Hostaway 订单里改好；补房东＝要多给房东这笔钱；扣房东＝要从房东款里扣掉这笔钱；特殊折扣＝这笔钱要做到订单里（在订单金额里体现），不会单独补扣房东。金额都按上面填的数计算。</p>
+        <p className="muted small" style={{ margin: 0 }}>无＝公司自己消化，或已在 Hostaway 订单里改好；补房东＝要多给房东这笔钱；扣房东＝要从房东款里扣掉这笔钱；特殊折扣＝这笔钱要去 Hostaway 订单里平账，不会单独补扣房东，在公司款项里最终按 $0 计（不计入收入、支出和合计）。其他情况金额都按上面填的数计算。</p>
         <label>原因说明<input value={f.reason} onChange={(e) => set('reason', e.target.value)} placeholder="例如：客人投诉，退部分房费" /></label>
         {err && <div className="err">{err}</div>}
         <div className="btn-row">
