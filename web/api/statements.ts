@@ -45,7 +45,7 @@ export default async function handler(req: Req, res: Res) {
 
       // 当月已赔付的索赔（按到账日期）
       const claimsIn = new Map<number, number>()
-      const { data: cl } = await db.from('claims').select('property_id, paid_amount').eq('status', '已赔付').gte('paid_date', from).lt('paid_date', to)
+      const { data: cl } = await db.from('claims').select('property_id, paid_amount').in('status', ['已赔付', '客人直接赔付']).gte('paid_date', from).lt('paid_date', to)
       for (const c of cl ?? []) claimsIn.set(c.property_id as number, (claimsIn.get(c.property_id as number) ?? 0) + (Number(c.paid_amount) || 0))
 
       // 当月处理的差评赔偿里，房东承担的部分

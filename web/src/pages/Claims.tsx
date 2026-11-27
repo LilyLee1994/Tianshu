@@ -6,9 +6,10 @@ import { coveredAssistantIds } from '../lib/cover'
 import { money, today } from '../lib/ui'
 import { signedUrls, uploadPhotos } from '../lib/photos'
 
-const STATUSES = ['待提交', '已提交平台', '平台处理中', '已赔付', '被驳回', '放弃'] as const
+const PAID: string[] = ['已赔付', '客人直接赔付']
+const STATUSES = ['待提交', '联系客人中', '客人直接赔付', '已提交平台', '平台处理中', '已赔付', '被驳回', '放弃'] as const
 const PLATFORMS = ['Airbnb', 'Booking.com', '其他'] as const
-const chip = (s: string) => (s === '已赔付' ? 'chip green' : s === '被驳回' || s === '放弃' ? 'chip gray' : s === '待提交' ? 'chip amber' : 'chip blue')
+const chip = (s: string) => (s === '已赔付' || s === '客人直接赔付' ? 'chip green' : s === '被驳回' || s === '放弃' ? 'chip gray' : s === '待提交' ? 'chip amber' : 'chip blue')
 
 interface Claim {
   id: number; property_id: number; platform: string; occurred_date: string; content: string; claimed_amount: number | null
@@ -63,13 +64,13 @@ export default function Claims() {
     return true
   }), [rows, isAssistant, status, q, profile, onlyProp, cover])
 
-  const open = shown.filter((r) => ['待提交', '已提交平台', '平台处理中'].includes(r.status)).length
-  const paid = shown.filter((r) => r.status === '已赔付').reduce((a, r) => a + Number(r.paid_amount ?? 0), 0)
+  const open = shown.filter((r) => ['待提交', '联系客人中', '已提交平台', '平台处理中'].includes(r.status)).length
+  const paid = shown.filter((r) => PAID.includes(r.status)).reduce((a, r) => a + Number(r.paid_amount ?? 0), 0)
 
   return (
     <div>
       <div className="title-row"><h1>索赔</h1><button onClick={() => setAdding(true)}>+ 新增索赔</button></div>
-      <p className="muted small">客服在平台上发起索赔后，在这里记一条；跟进人定期查看平台结果，更新状态并填到账金额。<b>已赔付的到账金额会自动进当月房东结算</b>，被驳回或放弃的不进。</p>
+      <p className="muted small">流程：清洁工上报损坏 → 客服联系客人（联系客人中）→ 客人愿意赔就记“客人直接赔付”，不愿意再整理证据提交平台。<b>已赔付 / 客人直接赔付的到账金额会自动进当月房东结算</b>，被驳回或放弃的不进。</p>
       {onlyProp && <p className="btn-row" style={{ alignItems: 'center' }}><span className="chip blue" style={{ marginLeft: 0 }}>只看：{props.find((x) => x.id === onlyProp)?.name ?? '这个房源'}</span><button className="ghost" onClick={() => setSp({})}>看全部房源</button></p>}
       <div className="btn-row" style={{ marginBottom: 12 }}>
         <select value={status} onChange={(e) => setStatus(e.target.value)}>
@@ -87,7 +88,7 @@ export default function Claims() {
               <td>{r.occurred_date.slice(5)}</td><td>{r.property?.name}</td><td>{r.platform}</td>
               <td style={{ maxWidth: 280 }}>{r.content}</td><td>{r.creator?.name ?? '—'}</td>
               <td>{money(r.claimed_amount)}</td><td><span className={chip(r.status)} style={{ marginLeft: 0 }}>{r.status}</span></td>
-              <td>{r.status === '已赔付' ? <>{money(r.paid_amount)} <span className="muted small">{r.paid_date?.slice(5)}</span></> : '—'}</td>
+              <td>{PAID.includes(r.status) ? <>{money(r.paid_amount)} <span className="muted small">{r.paid_date?.slice(5)}</span></> : '—'}</td>
               <td className="btn-row" style={{ margin: 0 }}>
                 <button className="ghost" onClick={() => setUpd(r)}>更新状态</button>
                 <button className="ghost" onClick={() => makeRepair(r)}>生成维修工单</button>
@@ -151,9 +152,9 @@ function UpdateModal({ row, onClose, onSaved }: { row: Claim; onClose: () => voi
   const [date, setDate] = useState(row.paid_date ?? today())
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
-  const isPaid = status === '已赔付'
+  const isPaid = PAID.includes(status)
   const save = async () => {
-    if (isPaid && (paid.trim() === '' || Number.isNaN(Number(paid)))) { setErr('已赔付要填到账金额。'); return }
+    if (isPaid && (paid.trim() === '' || Number.isNaN(Number(paid)))) { setErr('已赔付 / 客人直接赔付，要填到账金额。'); return }
     setBusy(true); setErr('')
     const { error } = await supabase.from('claims').update({
       status, paid_amount: isPaid ? Number(paid) : null, paid_date: isPaid ? date : null, updated_at: new Date().toISOString(),

@@ -39,7 +39,7 @@ export default function Dashboard() {
       supabase.from('properties').select('id, name, assistant_id, property_contracts(*)').eq('legacy', false),
       supabase.from('reviews').select('id, channel_name, rating, reviewed_at, property:properties(name, assistant_id)').not('rating', 'is', null).gte('reviewed_at', new Date(Date.now() - 14 * 86400_000).toISOString()).order('reviewed_at', { ascending: false }).limit(500),
       supabase.from('review_actions').select('review_id, status').limit(5000),
-      supabase.from('claims').select('content, property:properties(name, assistant_id)').eq('status', '待提交').limit(50),
+      supabase.from('claims').select('content, status, property:properties(name, assistant_id)').in('status', ['待提交', '联系客人中']).limit(50),
       profile?.role === 'assistant' ? supabase.from('shift_months').select('status').eq('user_id', profile.id).eq('month', `${openMonth()}-01`).maybeSingle() : Promise.resolve({ data: null }),
       supabase.from('order_alerts').select('kind, detail, property:properties(name, assistant_id)').eq('status', '待处理').limit(200),
       profile?.role === 'admin' ? supabase.from('shift_requests').select('month, reason, user:profiles!shift_requests_user_id_fkey(name)').eq('status', '待审批').limit(50) : Promise.resolve({ data: [] }),
@@ -117,7 +117,7 @@ export default function Dashboard() {
         if (!mine(r.property?.assistant_id)) continue
         if (badOne(r.channel_name, Number(r.rating)) && !done.has(r.id)) t.push({ tag: '差评', text: `${tagOf(r.property?.assistant_id)}${r.property?.name} · ${r.channel_name} ${r.channel_name === 'Airbnb' ? Number(r.rating) / 2 + ' 星' : r.rating + ' 分'} · ${r.reviewed_at.slice(0, 10)}`, to: '/reviews', cls: 'purple', lv: 'red' })
       }
-      for (const c of (cl.data ?? []) as unknown as { content: string; property: { name: string; assistant_id: string | null } }[]) if (mine(c.property?.assistant_id)) t.push({ tag: '索赔', text: `${tagOf(c.property?.assistant_id)}${c.property?.name} · ${c.content}，还没提交平台`, to: '/claims', cls: 'amber', lv: 'orange' })
+      for (const c of (cl.data ?? []) as unknown as { content: string; status: string; property: { name: string; assistant_id: string | null } }[]) if (mine(c.property?.assistant_id)) t.push({ tag: '索赔', text: `${tagOf(c.property?.assistant_id)}${c.property?.name} · ${c.content}，${c.status === '待提交' ? '还没联系客人' : '联系客人中，等结果'}`, to: '/claims', cls: 'amber', lv: 'orange' })
       const rank: Record<Lv, number> = { red: 0, orange: 1, yellow: 2, blue: 3 }
       t.sort((a, b) => rank[a.lv] - rank[b.lv])
       setTodos(t); setStats({ pending, doing, incomplete }); setLoading(false)

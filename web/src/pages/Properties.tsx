@@ -212,7 +212,7 @@ function MoneyLog({ propertyId }: { propertyId: number }) {
   useEffect(() => {
     let off = false
     Promise.all([
-      supabase.from('claims').select('content, status, paid_amount, paid_date, platform').eq('property_id', propertyId).eq('status', '已赔付'),
+      supabase.from('claims').select('content, status, paid_amount, paid_date, platform').eq('property_id', propertyId).in('status', ['已赔付', '客人直接赔付']),
       supabase.from('review_actions').select('status, comp_amount, payer, handled_date, updated_at, note, review:reviews!inner(property_id, rating)').eq('review.property_id', propertyId).eq('status', '赔偿客人'),
       supabase.from('work_orders').select('type, description, amount, payer, status, done_date, planned_date, created_at').eq('property_id', propertyId).not('amount', 'is', null).neq('status', '已取消'),
       supabase.from('ledger').select('occurred_date, kind, category, amount, payer, guest_name, reason').eq('property_id', propertyId),
