@@ -22,6 +22,9 @@ export default function Statements() {
   const [cover, setCover] = useState<Set<string>>(new Set())
   useEffect(() => { if (isAssistant && profile) coveredAssistantIds(profile.id).then(setCover) }, [profile?.id, isAssistant]) // eslint-disable-line react-hooks/exhaustive-deps
   const [month, setMonth] = useState(lastMonth())
+  const [monthEnd, setMonthEnd] = useState('')            // 空 = 只看一个月
+  const endM = monthEnd && monthEnd >= month ? monthEnd : month
+  const multi = endM !== month
   const [rows, setRows] = useState<St[]>([])
   const [q, setQ] = useState('')
   const [busy, setBusy] = useState(false)
@@ -31,10 +34,10 @@ export default function Statements() {
   const load = useCallback(async () => {
     const { data, error } = await supabase.from('owner_statements')
       .select('*, property:properties(name, assistant_id, assistant:profiles!assistant_id(name))')
-      .eq('month', `${month}-01`).order('property_id').limit(1000)
+      .gte('month', `${month}-01`).lte('month', `${endM}-01`).order('month').order('property_id').limit(5000)
     if (error) { setMsg(`读取出错：${error.message}`); return }
     setRows((data ?? []) as never)
-  }, [month])
+  }, [month, endM])
   useEffect(() => { load() }, [load])
 
   const shown = useMemo(() => rows.filter((r) => {
@@ -57,12 +60,26 @@ export default function Statements() {
     setAdj(null); load()
   }
 
+  const genRange = async () => {
+    const ms: string[] = []
+    for (let d = new Date(`${month}-01`); d.toISOString().slice(0, 7) <= endM && ms.length < 12; d.setMonth(d.getMonth() + 1)) ms.push(d.toISOString().slice(0, 7))
+    if (ms.length === 1) { await act({ action: 'generate', month: ms[0] }, ''); return }
+    setBusy(true); setMsg('')
+    let made = 0, kept = 0
+    for (const m of ms) {
+      const [r, e] = await callApi<{ made?: number; kept?: number }>('statements', { action: 'generate', month: m })
+      if (e) { setBusy(false); setMsg(`${m} 生成失败：${e}`); load(); return }
+      made += r?.made ?? 0; kept += r?.kept ?? 0
+    }
+    setBusy(false); setMsg(`已生成 ${ms.length} 个月共 ${made} 张草稿${kept ? `，${kept} 张已确认的没动` : ''}。`); load()
+  }
+
   const exportCsv = () => {
-    const head = ['房源', '助理', '订单数', '晚数', '房费', '佣金比例', '佣金', '平台费', 'GST', '房东承担维修', '差评赔偿', '索赔到账', '公司款项', '调整', '调整说明', '应付房东', '状态']
-    const lines = shown.map((r) => [r.property?.name, r.property?.assistant?.name ?? '', r.reservations, r.nights, r.rental_income, r.commission_rate, r.commission, r.platform_fee, r.gst, r.owner_costs, r.review_comp, r.claims_in, r.ledger_adj ?? 0, r.adjustment, r.adjustment_note ?? '', r.payable, r.status]
+    const head = ['月份', '房源', '助理', '订单数', '晚数', '房费', '佣金比例', '佣金', '平台费', 'GST', '房东承担维修', '差评赔偿', '索赔到账', '公司款项', '调整', '调整说明', '应付房东', '状态']
+    const lines = shown.map((r) => [r.month.slice(0, 7), r.property?.name, r.property?.assistant?.name ?? '', r.reservations, r.nights, r.rental_income, r.commission_rate, r.commission, r.platform_fee, r.gst, r.owner_costs, r.review_comp, r.claims_in, r.ledger_adj ?? 0, r.adjustment, r.adjustment_note ?? '', r.payable, r.status]
       .map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))
     const url = URL.createObjectURL(new Blob(['﻿' + [head.join(','), ...lines].join('\n')], { type: 'text/csv;charset=utf-8' }))
-    const a = document.createElement('a'); a.href = url; a.download = `房东结算-${month}.csv`; a.click(); URL.revokeObjectURL(url)
+    const a = document.createElement('a'); a.href = url; a.download = `房东结算-${multi ? `${month}至${endM}` : month}.csv`; a.click(); URL.revokeObjectURL(url)
   }
 
   return (
@@ -70,9 +87,12 @@ export default function Statements() {
       <h1>房东结算（财务）</h1>
       <p className="muted small">应付房东 = 房费（不含清洁费，按退房日归月）先扣平台费 16.5%，再在剩下的金额上扣佣金（比例 × 1.1，默认 15% → 16.5%）；再 + 当月到账的索赔、± 手工调整、− 房东承担的维修费和差评赔偿。平台费和佣金已含 GST，“其中 GST”仅供对账。确认后不能再改。</p>
       <div className="btn-row" style={{ marginBottom: 12 }}>
-        <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
+        <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} title="起始月份" />
+        <span className="muted small">到</span>
+        <input type="month" value={monthEnd} min={month} onChange={(e) => setMonthEnd(e.target.value)} title="结束月份（不选就只看起始月）" />
+        {monthEnd && <button className="ghost" onClick={() => setMonthEnd('')}>只看一个月</button>}
         <input placeholder="搜索房源" value={q} onChange={(e) => setQ(e.target.value)} />
-        {canEdit && <button disabled={busy} onClick={() => act({ action: 'generate', month }, '')}>{busy ? '生成中…' : rows.length ? '重新计算草稿' : '生成这个月的草稿'}</button>}
+        {canEdit && <button disabled={busy} onClick={genRange}>{busy ? '生成中…' : multi ? '生成这几个月的草稿' : rows.length ? '重新计算草稿' : '生成这个月的草稿'}</button>}
         <button className="ghost" onClick={exportCsv} disabled={!shown.length}>导出 CSV</button>
       </div>
       {msg && <p className="muted">{msg}</p>}
@@ -83,7 +103,7 @@ export default function Statements() {
           <tbody>
             {shown.map((r) => (
               <tr key={r.id}>
-                <td>{r.property?.name}</td><td>{r.property?.assistant?.name ?? '—'}</td>
+                <td>{r.property?.name}{multi && <div className="muted small">{r.month.slice(0, 7)}</div>}</td><td>{r.property?.assistant?.name ?? '—'}</td>
                 <td>{r.reservations} / {r.nights}</td>
                 <td>{money(r.rental_income)}</td>
                 <td>{money(r.commission)} <span className="muted small">{Math.round(Number(r.commission_rate) * 1000) / 10}%</span></td>
@@ -106,7 +126,7 @@ export default function Statements() {
             )}
           </tbody>
         </table>
-        {!shown.length && <p className="muted pad">{month} 还没有结算单。{canEdit ? '点上面的“生成这个月的草稿”。' : '等财务生成后这里会显示。'}</p>}
+        {!shown.length && <p className="muted pad">{multi ? `${month} 至 ${endM}` : month} 还没有结算单。{canEdit ? '点上面的“生成这个月的草稿”。' : '等财务生成后这里会显示。'}</p>}
       </div>
 
       {adj && <AdjustModal row={adj} busy={busy} onClose={() => setAdj(null)} onSave={(v, n) => act({ action: 'adjust', id: adj.id, adjustment: v, note: n }, '已保存调整。')} />}

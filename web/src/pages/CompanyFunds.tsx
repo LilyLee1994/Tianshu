@@ -30,6 +30,8 @@ export default function CompanyFunds() {
   const [rows, setRows] = useState<Row[]>([])
   const [props, setProps] = useState<Prop[]>([])
   const [month, setMonth] = useState('')
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
   const [platform, setPlatform] = useState('')
   const [kind, setKind] = useState('')
   const [rec, setRec] = useState('')
@@ -51,13 +53,15 @@ export default function CompanyFunds() {
   const shown = useMemo(() => rows.filter((r) => {
     if (isAssistant && !(r.property?.assistant_id && cover.has(r.property.assistant_id))) return false
     if (month && !r.occurred_date.startsWith(month)) return false
+    if (from && r.occurred_date < from) return false
+    if (to && r.occurred_date > to) return false
     if (platform && r.platform !== platform) return false
     if (kind && r.kind !== kind) return false
     if (rec === 'no' && r.reconciled) return false
     if (rec === 'yes' && !r.reconciled) return false
     if (q && !`${r.property?.name} ${r.guest_name ?? ''} ${r.order_ref ?? ''} ${r.reason ?? ''}`.toLowerCase().includes(q.toLowerCase())) return false
     return true
-  }), [rows, isAssistant, cover, month, platform, kind, rec, q])
+  }), [rows, isAssistant, cover, month, from, to, platform, kind, rec, q])
   const inn = shown.filter((r) => r.amount > 0).reduce((n, r) => n + Number(r.amount), 0)
   const out = shown.filter((r) => r.amount < 0).reduce((n, r) => n - Number(r.amount), 0)
   const todo = shown.filter((r) => !r.reconciled).length
@@ -71,7 +75,7 @@ export default function CompanyFunds() {
     const head = ['日期', '房源', '平台', '客人', '订单号', '入住', '退房', '类型', '类别', '金额', '责任方', '对房东结算', '已对账', '原因']
     const lines = shown.map((r) => [r.occurred_date, r.property?.name ?? '', r.platform, r.guest_name ?? '', r.order_ref ?? '', r.check_in ?? '', r.check_out ?? '', r.kind, r.category, r.amount, r.payer ?? '', r.owner_effect, r.reconciled ? '是' : '否', r.reason ?? ''])
     const csv = '\ufeff' + [head, ...lines].map((l) => l.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
-    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); a.download = `公司款项${month ? '_' + month : ''}.csv`; a.click()
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); a.download = `公司款项${month ? '_' + month : ''}${from || to ? `_${from || '起'}至${to || '今'}` : ''}.csv`; a.click()
   }
 
   return (
@@ -85,6 +89,11 @@ export default function CompanyFunds() {
         <select value={rec} onChange={(e) => setRec(e.target.value)}><option value="">对账：全部</option><option value="no">未对账</option><option value="yes">已对账</option></select>
         <input placeholder="搜索房源、客人、订单号、原因" value={q} onChange={(e) => setQ(e.target.value)} style={{ minWidth: 240 }} />
         {month && <button className="ghost" onClick={() => setMonth('')}>清除月份</button>}
+        <span className="muted small">日期从</span>
+        <input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
+        <span className="muted small">到</span>
+        <input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
+        {(from || to) && <button className="ghost" onClick={() => { setFrom(''); setTo('') }}>清除日期</button>}
         <button className="ghost" onClick={exportCsv}>导出 CSV</button>
       </div>
       <p className="muted small" style={{ margin: '0 0 8px' }}>
