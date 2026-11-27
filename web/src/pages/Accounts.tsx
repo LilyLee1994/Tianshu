@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { callApi } from '../lib/api'
 import { ROLE_LABEL, type Role } from '../lib/auth'
 
-interface User { id: string; account: string; name: string; role: Role; contact: string | null; active: boolean; wechat_token?: string | null }
+interface User { id: string; account: string; name: string; role: Role; contact: string | null; active: boolean }
 interface Prop { id: number; name: string; region: string | null; assistant_id: string | null; cleaning_by: string }
 
 export default function Accounts() {
