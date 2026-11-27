@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { coveredAssistantIds } from '../lib/cover'
@@ -26,12 +26,24 @@ export default function Claims() {
   const [props, setProps] = useState<Prop[]>([])
   const [status, setStatus] = useState('')
   const [sp, setSp] = useSearchParams()
+  const nav = useNavigate()
   const onlyProp = Number(sp.get('property')) || null
   const [q, setQ] = useState('')
   const [adding, setAdding] = useState(false)
   const [upd, setUpd] = useState<Claim | null>(null)
   const [pics, setPics] = useState<string[] | null>(null)
   const [msg, setMsg] = useState('')
+  const makeRepair = async (r: Claim) => {
+    const tag = `【索赔#${r.id}】`
+    const ex = await supabase.from('work_orders').select('id').eq('type', '维修').like('description', `${tag}%`).limit(1)
+    if (ex.data?.length) { nav(`/orders?id=${ex.data[0].id}`); return }
+    const { data, error } = await supabase.from('work_orders').insert({
+      property_id: r.property_id, type: '维修', description: `${tag}${r.content.replace('【清洁上报损坏】', '')}`,
+      status: '待派单', damage_photos: r.photos ?? [],
+    }).select('id').single()
+    if (error || !data) { setMsg(`生成失败：${error?.message ?? ''}`); return }
+    nav(`/orders?id=${data.id}`)
+  }
 
   const load = useCallback(async () => {
     const [c, p] = await Promise.all([
@@ -78,6 +90,7 @@ export default function Claims() {
               <td>{r.status === '已赔付' ? <>{money(r.paid_amount)} <span className="muted small">{r.paid_date?.slice(5)}</span></> : '—'}</td>
               <td className="btn-row" style={{ margin: 0 }}>
                 <button className="ghost" onClick={() => setUpd(r)}>更新状态</button>
+                <button className="ghost" onClick={() => makeRepair(r)}>生成维修工单</button>
                 {r.photos?.length > 0 && <button className="ghost" onClick={async () => setPics(await signedUrls(r.photos))}>证据</button>}
               </td>
             </tr>
