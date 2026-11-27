@@ -46,7 +46,7 @@ export default function Dashboard() {
           profile?.role === 'assistant' ? coveredAssistantIds(profile.id) : Promise.resolve(new Set<string>()),
       supabase.from('work_orders').select('id, damage_report, property:properties(name, assistant_id)').not('damage_report', 'is', null).eq('damage_handled', false).neq('status', '已取消'),
       supabase.from('onboarding_steps').select('property_id, seq, name, owner, status, property:properties(name, assistant_id)').order('seq').limit(3000),
-    ]).then(([o, p, rv, ra, cl, sm, oa, sr, cov, dm, ob]) => {
+    ]).then(async ([o, p, rv, ra, cl, sm, oa, sr, cov, dm, ob]) => {
       const mine = (aid: string | null | undefined) => profile?.role !== 'assistant' || (!!aid && cov.has(aid))
       const tagOf = (aid: string | null | undefined) => (profile?.role === 'assistant' && aid && aid !== profile.id ? '（代班）' : '')
       const t: Todo[] = []
