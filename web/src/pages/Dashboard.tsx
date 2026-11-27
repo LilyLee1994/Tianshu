@@ -185,7 +185,7 @@ export default function Dashboard() {
       }
       const rank: Record<Lv, number> = { red: 0, orange: 1, yellow: 2, blue: 3 }
       t.sort((a, b) => rank[a.lv] - rank[b.lv])
-      setTodos(t); setStats({ pending, doing, incomplete }); setLoading(false)
+      setTodos(profile?.role === 'finance' ? t.filter((x) => x.tag === '特殊折扣待平账') : t); setStats({ pending, doing, incomplete }); setLoading(false)
     })
   }, [])
 
@@ -193,11 +193,11 @@ export default function Dashboard() {
   return (
     <div>
       <h1>总览</h1>
-      <div className="stats">
+      {profile?.role !== 'finance' && <div className="stats">
         <div className="stat"><div className="n">{stats.pending}</div>待派单 / 待确认费用</div>
         <div className="stat"><div className="n">{stats.doing}</div>进行中的工单</div>
         <div className="stat"><div className="n">{stats.incomplete}</div>待登记完整的合同</div>
-      </div>
+      </div>}
       {profile?.role === 'admin' && (
         <div className="card" style={{ marginBottom: 24 }}>
           <div className="title-row"><h3 style={{ margin: 0 }}>Hostaway 每日数据同步</h3><button className="ghost" disabled={sync.running} onClick={syncNow}>{sync.running ? '同步中…' : '立即同步一次'}</button></div>

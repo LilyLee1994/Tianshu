@@ -4,18 +4,19 @@ import { supabase } from '../lib/supabase'
 import { ROLE_LABEL, useAuth, type Role } from '../lib/auth'
 
 const ALL: Role[] = ['admin', 'assistant', 'ops', 'finance']
+const NO_FIN: Role[] = ['admin', 'assistant', 'ops']   // 财务只看款项，其余业务页面不开放
 export const NAV: { to: string; label: string; roles: Role[] }[] = [
   { to: '/', label: '总览', roles: ALL },
-  { to: '/properties', label: '房源档案', roles: ALL },
-  { to: '/orders', label: '工单', roles: ALL },
-  { to: '/repairs', label: '维修', roles: ALL },
-  { to: '/onboarding', label: '新房源上线', roles: ALL },
-  { to: '/alerts', label: '订单异常', roles: ALL },
-  { to: '/claims', label: '索赔', roles: ALL },
-  { to: '/reviews', label: '差评', roles: ALL },
+  { to: '/properties', label: '房源档案', roles: NO_FIN },
+  { to: '/orders', label: '工单', roles: NO_FIN },
+  { to: '/repairs', label: '维修', roles: NO_FIN },
+  { to: '/onboarding', label: '新房源上线', roles: NO_FIN },
+  { to: '/alerts', label: '订单异常', roles: NO_FIN },
+  { to: '/claims', label: '索赔', roles: NO_FIN },
+  { to: '/reviews', label: '差评', roles: NO_FIN },
   { to: '/fees', label: '清洁费', roles: ['admin'] },
-  { to: '/contracts', label: '合同财务', roles: ALL },
-  { to: '/shifts', label: '排班', roles: ALL },
+  { to: '/contracts', label: '合同财务', roles: NO_FIN },
+  { to: '/shifts', label: '排班', roles: NO_FIN },
   { to: '/statements', label: '房东结算', roles: ALL },
   { to: '/company', label: '公司款项', roles: ALL },
   { to: '/accounts', label: '账号与分配', roles: ['admin'] },
