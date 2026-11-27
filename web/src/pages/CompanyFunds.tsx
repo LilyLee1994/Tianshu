@@ -134,7 +134,7 @@ export default function CompanyFunds() {
               <td>{r.owner_effect !== '无' ? <span className="chip amber" style={{ marginLeft: 0 }}>{r.owner_effect}</span> : '—'}</td>
               <td>{canReconcile ? <input type="checkbox" style={{ width: 'auto', minHeight: 0 }} checked={r.reconciled} onChange={() => toggleRec(r)} /> : r.reconciled ? '✓' : '—'}</td>
               <td style={{ maxWidth: 260 }}>{r.reason ?? ''}</td>
-              <td className="btn-row" style={{ margin: 0 }}>{r.owner_effect === '特殊折扣' && canReconcile && <button className="task-btn" onClick={() => toggleAdj(r)}>{r.order_adjusted_at ? '撤销平账' : '标记已平账'}</button>}{r.claim_id ? <button className="task-btn" onClick={() => nav(`/claims?id=${r.claim_id}`)}>来自索赔</button> : r.work_order_id ? <button className="task-btn" onClick={() => nav(`/repairs?id=${r.work_order_id}`)}>来自维修</button> : <button className="task-btn" onClick={() => setEdit(r)}>编辑</button>}</td>
+              <td><span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>{r.owner_effect === '特殊折扣' && canReconcile && <button className="task-btn" onClick={() => toggleAdj(r)}>{r.order_adjusted_at ? '撤销平账' : '标记已平账'}</button>}{r.claim_id ? <button className="task-btn" onClick={() => nav(`/claims?id=${r.claim_id}`)}>来自索赔</button> : r.work_order_id ? <button className="task-btn" onClick={() => nav(`/repairs?id=${r.work_order_id}`)}>来自维修</button> : <button className="task-btn" onClick={() => setEdit(r)}>编辑</button>}</span></td>
             </tr>
           ))}</tbody>
         </table>
