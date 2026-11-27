@@ -25,14 +25,17 @@ const amt = (n: number) => {
 interface LedgerItem { id: number; property_id: number; occurred_date: string; kind: string; category: string; amount: number; reason: string | null; owner_effect: string; guest_name: string | null }
 // 鼠标放上去显示“其他补扣”由哪几笔公司款项组成
 function LedgerTip({ n, items }: { n: number; items: LedgerItem[] }) {
-  if (!items.length) return <>{amt(n)}</>
+  const live = items.reduce((a, l) => a + Math.abs(Number(l.amount)) * (l.owner_effect === '扣房东' ? -1 : 1), 0)
+  const stale = Math.abs(live - n) > 0.005   // 公司款项后来又改过，这张草稿里的数字是旧的
+  if (!items.length && !stale) return <>{amt(n)}</>
   const [pos, setPos] = useState<{ top: number; right: number } | null>(null)
   const show = (e: React.MouseEvent<HTMLElement>) => { const r = e.currentTarget.getBoundingClientRect(); setPos({ top: r.bottom + 6, right: Math.max(12, window.innerWidth - r.right) }) }
   return (
     <span className="tip-wrap" onMouseEnter={show} onMouseLeave={() => setPos(null)}>
-      {amt(n)}
+      {amt(n)}{stale && <span style={{ color: '#d98a00' }}> ⚠</span>}
       <span className="tip-pop" style={pos ? { display: 'block', top: pos.top, right: pos.right } : undefined}>
         <b>其他补扣明细（来自公司款项）</b>
+        {stale && <span className="warn small" style={{ display: 'block', marginBottom: 6 }}>公司款项现在的结果是 {live ? `${live > 0 ? '+' : '−'}$${Math.abs(live).toFixed(2).replace(/\.00$/, '')}` : '没有补扣'}，和这张草稿里的数字不一致（可能改过对房东结算的选项）。请点上面的“重新计算草稿”。</span>}
         {items.map((l) => {
           const v = Math.abs(Number(l.amount)) * (l.owner_effect === '扣房东' ? -1 : 1)
           return (
