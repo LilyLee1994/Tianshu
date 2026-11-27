@@ -35,11 +35,11 @@ export default function Dashboard() {
 
   useEffect(() => {
     Promise.all([
-      supabase.from('work_orders').select('status, type, description, property:properties(name)').not('status', 'in', '(已完成,已取消)'),
+      supabase.from('work_orders').select('id, status, type, description, property:properties(name)').not('status', 'in', '(已完成,已取消)'),
       supabase.from('properties').select('id, name, assistant_id, property_contracts(*)').eq('legacy', false),
       supabase.from('reviews').select('id, channel_name, rating, reviewed_at, property:properties(name, assistant_id)').not('rating', 'is', null).gte('reviewed_at', new Date(Date.now() - 14 * 86400_000).toISOString()).order('reviewed_at', { ascending: false }).limit(500),
       supabase.from('review_actions').select('review_id, status').limit(5000),
-      supabase.from('claims').select('content, status, property:properties(name, assistant_id)').in('status', ['待提交', '联系客人中']).limit(50),
+      supabase.from('claims').select('id, content, status, property:properties(name, assistant_id)').in('status', ['待提交', '联系客人中']).limit(50),
       profile?.role === 'assistant' ? supabase.from('shift_months').select('status').eq('user_id', profile.id).eq('month', `${openMonth()}-01`).maybeSingle() : Promise.resolve({ data: null }),
       supabase.from('order_alerts').select('kind, detail, property:properties(name, assistant_id)').eq('status', '待处理').limit(200),
       profile?.role === 'admin' ? supabase.from('shift_requests').select('month, reason, user:profiles!shift_requests_user_id_fkey(name)').eq('status', '待审批').limit(50) : Promise.resolve({ data: [] }),
@@ -92,12 +92,12 @@ export default function Dashboard() {
         }
       }
       let pending = 0, doing = 0
-      for (const x of (o.data ?? []) as unknown as { status: string; type: string; description: string; property: { name: string } }[]) {
+      for (const x of (o.data ?? []) as unknown as { id: number; status: string; type: string; description: string; property: { name: string } }[]) {
         const label = `${x.property?.name} · ${x.type} · ${x.description ?? ''}`
-        if (x.status === '待派单') { pending++; t.push({ tag: '待派单', text: label, to: '/orders', cls: 'amber', lv: 'red' }) }
-        else if (x.status === '待确认费用') { pending++; t.push({ tag: '确认费用', text: label, to: '/orders', cls: 'purple', lv: 'orange' }) }
-        else if (x.status === '待通知房东') t.push({ tag: '通知房东', text: label, to: '/orders', cls: 'amber', lv: 'orange' })
-        else if (x.status === '房东已完成') t.push({ tag: '确认', text: `${label}，房东说已完成，请确认`, to: '/orders', cls: 'purple', lv: 'yellow' })
+        if (x.status === '待派单') { pending++; t.push({ tag: '待派单', text: label, to: `/orders?id=${x.id}`, cls: 'amber', lv: 'red' }) }
+        else if (x.status === '待确认费用') { pending++; t.push({ tag: '确认费用', text: label, to: `/orders?id=${x.id}`, cls: 'purple', lv: 'orange' }) }
+        else if (x.status === '待通知房东') t.push({ tag: '通知房东', text: label, to: `/orders?id=${x.id}`, cls: 'amber', lv: 'orange' })
+        else if (x.status === '房东已完成') t.push({ tag: '确认', text: `${label}，房东说已完成，请确认`, to: `/orders?id=${x.id}`, cls: 'purple', lv: 'yellow' })
         else doing++
       }
       let incomplete = 0
@@ -117,7 +117,7 @@ export default function Dashboard() {
         if (!mine(r.property?.assistant_id)) continue
         if (badOne(r.channel_name, Number(r.rating)) && !done.has(r.id)) t.push({ tag: '差评', text: `${tagOf(r.property?.assistant_id)}${r.property?.name} · ${r.channel_name} ${r.channel_name === 'Airbnb' ? Number(r.rating) / 2 + ' 星' : r.rating + ' 分'} · ${r.reviewed_at.slice(0, 10)}`, to: '/reviews', cls: 'purple', lv: 'red' })
       }
-      for (const c of (cl.data ?? []) as unknown as { content: string; status: string; property: { name: string; assistant_id: string | null } }[]) if (mine(c.property?.assistant_id)) t.push({ tag: '索赔', text: `${tagOf(c.property?.assistant_id)}${c.property?.name} · ${c.content}，${c.status === '待提交' ? '还没联系客人' : '联系客人中，等结果'}`, to: '/claims', cls: 'amber', lv: 'orange' })
+      for (const c of (cl.data ?? []) as unknown as { id: number; content: string; status: string; property: { name: string; assistant_id: string | null } }[]) if (mine(c.property?.assistant_id)) t.push({ tag: '索赔', text: `${tagOf(c.property?.assistant_id)}${c.property?.name} · ${c.content}，${c.status === '待提交' ? '还没联系客人' : '联系客人中，等结果'}`, to: `/claims?id=${c.id}`, cls: 'amber', lv: 'orange' })
       const rank: Record<Lv, number> = { red: 0, orange: 1, yellow: 2, blue: 3 }
       t.sort((a, b) => rank[a.lv] - rank[b.lv])
       setTodos(t); setStats({ pending, doing, incomplete }); setLoading(false)

@@ -30,6 +30,7 @@ export default function Claims() {
   const [sp, setSp] = useSearchParams()
   const nav = useNavigate()
   const onlyProp = Number(sp.get('property')) || null
+  const focusId = Number(sp.get('id')) || null
   const [q, setQ] = useState('')
   const [adding, setAdding] = useState(false)
   const [upd, setUpd] = useState<Claim | null>(null)
@@ -57,6 +58,7 @@ export default function Claims() {
   }, [])
   useEffect(() => { load() }, [load])
 
+  useEffect(() => { if (focusId) document.getElementById(`cl-${focusId}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }) }, [focusId, rows.length])
   const shown = useMemo(() => rows.filter((r) => {
     if (isAssistant && !(r.property?.assistant_id && cover.has(r.property.assistant_id))) return false
     if (onlyProp && r.property_id !== onlyProp) return false
@@ -85,7 +87,7 @@ export default function Claims() {
         <table style={{ minWidth: 960 }}>
           <thead><tr><th>日期</th><th>房源</th><th>平台</th><th>内容</th><th>发起人</th><th>申报金额</th><th>状态</th><th>到账金额</th><th></th></tr></thead>
           <tbody>{shown.map((r) => (
-            <tr key={r.id}>
+            <tr key={r.id} id={`cl-${r.id}`} className={r.id === focusId ? 'focus-row' : undefined}>
               <td>{r.occurred_date.slice(5)}</td><td>{r.property?.name}</td><td>{r.platform}</td>
               <td style={{ maxWidth: 280 }}>{r.content}</td><td>{r.creator?.name ?? '—'}</td>
               <td>{money(r.claimed_amount)}</td><td><span className={chip(r.status)} style={{ marginLeft: 0 }}>{r.status}</span></td>
