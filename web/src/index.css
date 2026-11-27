@@ -149,3 +149,10 @@ td .ghost, td button.ghost { white-space: nowrap; }
 /* 清洁/维修端：紧急的整块变红，排在最前 */
 .mcard.urgent { background: #fde4e1; border-color: #e58a80; }
 .mcard.urgent .chip { background: #d93c2f; color: #fff; }
+
+/* 电脑版：宽屏时左边任务列表、右边详情；手机仍是一列 */
+.mobile.wide { max-width: 1180px; padding: 20px 24px; }
+.wgrid { display: grid; grid-template-columns: 380px 1fr; gap: 20px; align-items: start; }
+.wlist { display: flex; flex-direction: column; gap: 12px; max-height: calc(100vh - 120px); overflow-y: auto; padding-right: 4px; }
+.wdetail { position: sticky; top: 16px; display: flex; flex-direction: column; gap: 12px; }
+.mcard.on { outline: 2px solid #0f6b66; }

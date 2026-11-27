@@ -13,6 +13,13 @@ interface Detail {
   accessHidden: boolean
 }
 
+function useWide() {
+  const q = '(min-width: 900px)'
+  const [w, setW] = useState(() => window.matchMedia(q).matches)
+  useEffect(() => { const m = window.matchMedia(q); const f = () => setW(m.matches); m.addEventListener('change', f); return () => m.removeEventListener('change', f) }, [])
+  return w
+}
+
 export default function WorkerApp() {
   const { profile, signOut } = useAuth()
   const [items, setItems] = useState<Item[]>([])
@@ -21,6 +28,7 @@ export default function WorkerApp() {
   const [loading, setLoading] = useState(true)
   const isClean = profile?.role === 'cleaner'
   const [pwOpen, setPwOpen] = useState(false)
+  const wide = useWide()
 
   const load = useCallback(async () => {
     const [r, e] = await callApi<{ orders: Item[] }>('worker-orders', {})
@@ -30,28 +38,37 @@ export default function WorkerApp() {
   useEffect(() => { load() }, [load])
 
   return (
-    <div className="mobile">
+    <div className={wide ? 'mobile wide' : 'mobile'}>
       <header><div><b>{isClean ? '清洁任务' : '维修工单'}</b><div className="small">{profile?.name} · {ROLE_LABEL[profile!.role]}</div></div><span style={{ display: 'flex', gap: 8 }}><button onClick={() => setPwOpen(true)}>修改密码</button><button onClick={signOut}>退出</button></span></header>
       {pwOpen && <PasswordModal onClose={() => setPwOpen(false)} />}
       {err && <div className="err-box">{err}</div>}
-      {open === null ? (
-        <>
-          {loading && <p className="muted">加载中…</p>}
-          {!loading && !items.length && <p className="muted pad">这里没有任务。助理派单后会出现在这里。</p>}
-          {[...items].sort((a, b) => Number(a.status === '已完成') - Number(b.status === '已完成') || Number(b.urgent) - Number(a.urgent) || (a.planned_date ?? '9999').localeCompare(b.planned_date ?? '9999')).map((o) => (
-            <button key={o.id} className={o.urgent && o.status !== '已完成' ? 'mcard urgent' : 'mcard'} onClick={() => setOpen(o.id)}>
+      {(() => {
+        const list = (
+          <>
+            {loading && <p className="muted">加载中…</p>}
+            {!loading && !items.length && <p className="muted pad">这里没有任务。助理派单后会出现在这里。</p>}
+            {[...items].sort((a, b) => Number(a.status === '已完成') - Number(b.status === '已完成') || Number(b.urgent) - Number(a.urgent) || (a.planned_date ?? '9999').localeCompare(b.planned_date ?? '9999')).map((o) => (
+            <button key={o.id} className={`${o.urgent && o.status !== '已完成' ? 'mcard urgent' : 'mcard'}${wide && open === o.id ? ' on' : ''}`} onClick={() => setOpen(o.id)}>
               <div><b>{o.property?.name}</b>{o.urgent && <span className="chip amber">紧急</span>}</div>
               <div>{o.type} · {o.description ?? ''}</div>
               <div><span className={chipOf(o.status)} style={{ marginLeft: 0 }}>{o.status}</span></div>
             </button>
           ))}
-        </>
-      ) : <OrderView id={open} isClean={isClean} onBack={() => { setOpen(null); load() }} />}
+          </>
+        )
+        if (wide) return (
+          <div className="wgrid">
+            <div className="wlist">{list}</div>
+            <div className="wdetail">{open === null ? <p className="muted pad">点左边的任务，在这里查看和处理。</p> : <OrderView key={open} id={open} isClean={isClean} wide onChanged={load} onBack={() => { setOpen(null); load() }} />}</div>
+          </div>
+        )
+        return open === null ? list : <OrderView id={open} isClean={isClean} onChanged={load} onBack={() => { setOpen(null); load() }} />
+      })()}
     </div>
   )
 }
 
-function OrderView({ id, isClean, onBack }: { id: number; isClean: boolean; onBack: () => void }) {
+function OrderView({ id, isClean, onBack, onChanged, wide }: { id: number; isClean: boolean; onBack: () => void; onChanged?: () => void; wide?: boolean }) {
   const [d, setD] = useState<Detail | null>(null)
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
@@ -76,11 +93,12 @@ function OrderView({ id, isClean, onBack }: { id: number; isClean: boolean; onBa
       setFiles([]); setAmount(''); setText(''); setDamage(false)
       setDone(action === 'accept' ? '已接单，下面可以看到地址和进门方式。' : action === 'damage' ? '已上报，助理会马上收到。你可以接着清洁。' : '已提交，谢谢。')
       await load()
+      onChanged?.()
     } catch (x) { setErr((x as Error).message) }
     setBusy(false)
   }
 
-  if (!d) return <div><button className="back" onClick={onBack}>← 返回列表</button>{err ? <div className="err-box">{err}</div> : <p className="muted">加载中…</p>}</div>
+  if (!d) return <div>{!wide && <button className="back" onClick={onBack}>← 返回列表</button>}{err ? <div className="err-box">{err}</div> : <p className="muted">加载中…</p>}</div>
   const st = d.order.status
   const picker = (
     <label className="file">拍照 / 选照片（{files.length} 张）
@@ -90,7 +108,7 @@ function OrderView({ id, isClean, onBack }: { id: number; isClean: boolean; onBa
 
   return (
     <div>
-      <button className="back" onClick={onBack}>← 返回列表</button>
+      {!wide && <button className="back" onClick={onBack}>← 返回列表</button>}
       <section className="card">
         <h2>{d.property.name} {d.order.urgent && <span className="chip amber">紧急</span>}</h2>
         <p>{d.order.type} · {d.order.description}</p>
