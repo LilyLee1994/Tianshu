@@ -12,7 +12,7 @@ interface Order {
   id: number; property_id: number; type: OType; executor: string | null; description: string | null
   assigned_to: string | null; vendor_name: string | null; planned_date: string | null; done_date: string | null
   status: string; amount: number | null; payer: string; owner_notified: boolean; urgent: boolean; created_at: string
-  photos: string[]; damage_photos: string[]; damage_report: string | null; damage_handled?: boolean; settled_at?: string | null
+  photos: string[]; damage_photos: string[]; damage_report: string | null; damage_handled?: boolean; settled_at?: string | null; owner_charge?: number | null
   property: { name: string; assistant_id: string | null } | null; worker: { name: string } | null
 }
 interface Worker { id: string; name: string; role: string }
@@ -114,6 +114,7 @@ function OrderRow({ o, workers, onUpdate, focus, hideType }: { o: Order; workers
   const showPics = async () => setPics(await signedUrls([...(o.damage_photos ?? []), ...(o.photos ?? [])]))
   const nPics = (o.photos?.length ?? 0) + (o.damage_photos?.length ?? 0)
   const [payer, setPayer] = useState(o.payer)
+  const [charge, setCharge] = useState(o.owner_charge?.toString() ?? '')
   const need = o.type === '清洁' ? 'cleaner' : 'repairman'
   const cands = workers.filter((w) => w.role === need)
   const who = o.worker?.name ?? o.vendor_name ?? o.executor ?? '—'
@@ -131,9 +132,10 @@ function OrderRow({ o, workers, onUpdate, focus, hideType }: { o: Order; workers
   } else if (o.status === '待确认费用') {
     action = (
       <span className="btn-row" style={{ margin: 0 }}>
-        <input style={{ minHeight: 36, width: 80 }} placeholder="金额" value={amt} onChange={(e) => setAmt(e.target.value)} />
+        <input style={{ minHeight: 36, width: 90 }} placeholder={o.type === '维修' ? '师傅成本' : '金额'} title={o.type === '维修' ? '付给师傅的钱' : ''} value={amt} onChange={(e) => setAmt(e.target.value)} />
         <select style={{ minHeight: 36 }} value={payer} onChange={(e) => setPayer(e.target.value)}><option>待定</option><option>公司</option><option>房东</option></select>
-        <button className="ghost" disabled={!amt.trim() || payer === '待定'} onClick={() => onUpdate(o.id, { amount: Number(amt), payer, status: '已完成', done_date: today() }, '费用已确认，工单完成。')}>确认费用</button>
+        {o.type === '维修' && payer === '房东' && <input style={{ minHeight: 36, width: 100 }} placeholder={amt ? `收房东（默认${amt}）` : '收房东'} title="向房东收取的金额，可以比师傅成本高" value={charge} onChange={(e) => setCharge(e.target.value)} />}
+        <button className="ghost" disabled={!amt.trim() || payer === '待定' || (charge.trim() !== '' && Number.isNaN(Number(charge)))} onClick={() => onUpdate(o.id, { amount: Number(amt), payer, ...(o.type === '维修' ? { owner_charge: payer === '房东' && charge.trim() !== '' ? Number(charge) : null } : {}), status: '已完成', done_date: today() }, '费用已确认，工单完成。')}>确认费用</button>
       </span>
     )
   } else if (o.type === '清洁' && next === '已完成') {
@@ -148,7 +150,7 @@ function OrderRow({ o, workers, onUpdate, focus, hideType }: { o: Order; workers
       <td><b>{o.property?.name}</b>{o.urgent && <span className="chip amber">次日入住</span>}</td>
       {!hideType && <td>{o.type}</td>}<td>{o.description ?? '—'}{o.damage_report && <div className="muted small">清洁上报损坏：{o.damage_report} <button className="task-btn" onClick={() => nav(`/claims?property=${o.property_id}`)}>已转入索赔，去查看</button></div>}</td><td>{who}</td>
       <td><span className={chipOf(o.status)}>{o.status}</span></td>
-      <td>{o.type === '清洁' ? '—' : `${money(o.amount)}（${o.payer}）`}{o.type === '维修' && o.status === '已完成' && <div>{o.settled_at ? <span className="chip green" style={{ marginLeft: 0 }}>已和师傅结算</span> : <span className="muted small">未和师傅结算</span>}</div>}</td>
+      <td>{o.type === '清洁' ? '—' : o.type === '维修' && o.payer === '房东' && o.owner_charge != null && Number(o.owner_charge) !== Number(o.amount) ? <>成本 {money(o.amount)}<div className="muted small">收房东 {money(o.owner_charge)}（赚 {money(Number(o.owner_charge) - Number(o.amount ?? 0))}）</div></> : `${money(o.amount)}（${o.payer}）`}{o.type === '维修' && o.status === '已完成' && <div>{o.settled_at ? <span className="chip green" style={{ marginLeft: 0 }}>已和师傅结算</span> : <span className="muted small">未和师傅结算</span>}</div>}</td>
       <td>{action}{nPics > 0 && <button className="ghost" onClick={showPics}>看照片（{nPics}）</button>}
         {pics && <div className="modal-bg" onClick={() => setPics(null)}><div className="modal" style={{ width: 720 }} onClick={(e) => e.stopPropagation()}><h2>{o.property?.name} · 照片</h2><div className="pics">{pics.map((u) => <a key={u} href={u} target="_blank" rel="noreferrer"><img src={u} /></a>)}{!pics.length && <p className="muted">照片加载失败。</p>}</div><button className="ghost" onClick={() => setPics(null)}>关闭</button></div></div>}
       </td>

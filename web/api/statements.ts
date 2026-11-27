@@ -54,8 +54,13 @@ export default async function handler(req: Req, res: Res) {
 
       // 房东承担、已完成的工单费用
       const costs = new Map<number, number>()
-      const { data: wo } = await db.from('work_orders').select('property_id, amount').eq('payer', '房东').eq('status', '已完成').gte('done_date', from).lt('done_date', to)
-      for (const w of wo ?? []) costs.set(w.property_id as number, (costs.get(w.property_id as number) ?? 0) + (Number(w.amount) || 0))
+      // 向房东收的钱：填了“收房东”就按它算（比师傅成本高的部分是公司利润），没填就是师傅成本（还没运行 067 时退回只读成本）
+      const woQ = (cols: string) => db.from('work_orders').select(cols).eq('payer', '房东').eq('status', '已完成').gte('done_date', from).lt('done_date', to)
+      let woRes: { data: unknown[] | null; error: unknown } = await woQ('property_id, amount, owner_charge')
+      if (woRes.error) woRes = await woQ('property_id, amount')
+      for (const w of (woRes.data ?? []) as { property_id: number; amount: number | null; owner_charge?: number | null }[]) {
+        costs.set(w.property_id, (costs.get(w.property_id) ?? 0) + (Number(w.owner_charge ?? w.amount) || 0))
+      }
 
       // 当月已赔付的索赔（按到账日期）
       const claimsIn = new Map<number, number>()

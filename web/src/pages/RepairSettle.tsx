@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 import { money } from '../lib/ui'
 
 interface Row {
-  id: number; type: string; description: string | null; amount: number | null; payer: string; status: string
+  id: number; type: string; description: string | null; amount: number | null; owner_charge?: number | null; payer: string; status: string
   done_date: string | null; vendor_name: string | null; assigned_to: string | null; settled_at: string | null
   property: { name: string } | null; worker: { name: string } | null
 }
@@ -100,13 +100,14 @@ export default function RepairSettle() {
           </div>
           {g.noAmt > 0 && <p className="warn small">有 {g.noAmt} 单没有填金额，请到工单里补上。</p>}
           <div className="table-wrap" style={{ border: 0 }}>
-            <table style={{ minWidth: 640 }}>
-              <thead><tr><th>完成日期</th><th>房源</th><th>内容</th><th style={{ textAlign: 'right' }}>金额</th><th>谁承担</th><th>结算</th><th></th></tr></thead>
+            <table style={{ minWidth: 720 }}>
+              <thead><tr><th>完成日期</th><th>房源</th><th>内容</th><th style={{ textAlign: 'right' }}>给师傅</th><th>谁承担</th><th style={{ textAlign: 'right' }}>收房东</th><th>结算</th><th></th></tr></thead>
               <tbody>{g.list.map((r) => (
                 <tr key={r.id}>
                   <td style={{ whiteSpace: 'nowrap' }}>{r.done_date?.slice(5)}</td><td>{r.property?.name}</td><td>{r.description ?? ''}</td>
                   <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{r.amount == null ? <span className="muted">未填</span> : money(r.amount)}</td>
                   <td>{r.payer}</td>
+                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{r.payer === '房东' ? money(r.owner_charge ?? r.amount) : <span className="muted">—</span>}</td>
                   <td>{r.settled_at ? <span className="chip green" style={{ marginLeft: 0 }}>已结算</span> : <span className="chip amber" style={{ marginLeft: 0 }}>未结算</span>}</td>
                   <td className="btn-row" style={{ margin: 0 }}>
                     <button className="task-btn" onClick={() => nav(`/repairs?id=${r.id}`)}>看工单</button>
