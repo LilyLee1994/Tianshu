@@ -65,7 +65,7 @@ export default function Orders({ scope = 'other' }: { scope?: 'repair' | 'other'
     const { data, error } = await supabase.from('work_orders').update(patch).eq('id', id).select('id')
     if (error || !data?.length) { setErr(error?.message ?? '没有权限：只有这个房源的主责助理、管理员、运营和财务能改这张工单。'); return }
     setMsg(ok); load()
-    if (patch.status === '已派单') void callApi('notify', { orderId: id })   // 派单后微信通知师傅（没填微信 token 就跳过）
+    if (patch.status === '已派单') void callApi('worker-act', { action: 'notify', orderId: id })   // 派单后微信通知师傅（没填微信 token 就跳过）
   }
 
   const inScope = (r: Order) => (r.type === '维修') === isRepair

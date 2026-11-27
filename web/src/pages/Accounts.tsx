@@ -175,7 +175,7 @@ function NotifySettings() {
   }
   const test = async (k: string) => {
     setMsg(''); setErr(''); setBusy(`t${k}`)
-    const [, e] = await callApi('notify', { test: k })
+    const [, e] = await callApi('worker-act', { action: 'notify-test', group: k })
     setBusy('')
     if (e) setErr(e); else setMsg('测试消息已发出，请到企业微信群里看一下。')
   }
