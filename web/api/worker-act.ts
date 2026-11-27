@@ -1,5 +1,5 @@
 import { adminClient, requireWorker, sydneyToday, type Req, type Res } from './_lib.js'
-import { notifyUser } from './_notify.js'
+import { notifyGroup } from './_notify.js'
 
 // 师傅 / 清洁公司提交动作：接单、提交完成、上报损坏
 export default async function handler(req: Req, res: Res) {
@@ -12,11 +12,15 @@ export default async function handler(req: Req, res: Res) {
     const { data: o } = await db.from('work_orders').select('id, type, status, assigned_to').eq('id', id).maybeSingle()
     if (!o || o.assigned_to !== me.id) return res.status(404).json({ error: '找不到这张工单。' })
 
-    // 师傅有动作时，微信通知这套房的主责助理
+    // 师傅有动作时，发到助理群，写明是哪套房的主责助理
     const tellAssistant = async (what: string) => {
       const { data: w } = await db.from('work_orders').select('type, description, property:properties(name, assistant_id)').eq('id', id).maybeSingle()
       const p = (w?.property as unknown as { name: string; assistant_id: string | null } | null)
-      if (p?.assistant_id) await notifyUser(db, p.assistant_id, `${p.name} · ${w?.type}：${what}`, `${p.name}<br>${w?.type}：${String(w?.description ?? '').replace(/^【索赔#\d+】/, '')}<br>${what}`)
+      if (!p) return
+      const ids = [me.id, p.assistant_id].filter(Boolean) as string[]
+      const { data: ps } = await db.from('profiles').select('id, name').in('id', ids)
+      const nm = (x: string | null) => (ps ?? []).find((q) => q.id === x)?.name ?? ''
+      await notifyGroup(db, 'assistant', `${p.name} · ${w?.type}：${what}`, [nm(p.assistant_id) ? `主责助理：@${nm(p.assistant_id)}` : '', `内容：${String(w?.description ?? '').replace(/^【索赔#\d+】/, '')}`, `提交人：${nm(me.id)}`])
     }
 
     // 照片路径必须是这张工单自己的目录，防止塞别人的文件

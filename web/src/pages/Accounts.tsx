@@ -16,13 +16,10 @@ export default function Accounts() {
 
   const load = useCallback(async () => {
     const [u, p] = await Promise.all([
-      supabase.from('profiles').select('id, account, name, role, contact, active, wechat_token').order('created_at'),
+      supabase.from('profiles').select('id, account, name, role, contact, active').order('created_at'),
       supabase.from('properties').select('id, name, region, assistant_id, cleaning_by').order('name'),
     ])
-    if (u.error) {   // 还没运行 072 迁移时没有 wechat_token 这一列，退回不读它
-      const r = await supabase.from('profiles').select('id, account, name, role, contact, active').order('created_at')
-      if (r.data) setUsers(r.data as User[])
-    } else if (u.data) setUsers(u.data as unknown as User[])
+    if (u.data) setUsers(u.data as unknown as User[])
     if (p.data) setProps(p.data as Prop[])
   }, [])
   useEffect(() => { load() }, [load])
@@ -30,14 +27,6 @@ export default function Accounts() {
   const count = (uid: string) => props.filter((p) => p.assistant_id === uid).length
   const assistants = users.filter((u) => u.role === 'assistant' && u.active)
 
-  const bindWechat = async (u: User) => {
-    const v = window.prompt(`填 ${u.name} 的 PushPlus token（让 TA 微信关注“pushplus推送加”公众号，在里面能看到；留空表示取消绑定）`, u.wechat_token ?? '')
-    if (v === null) return
-    setErr(''); setMsg('')
-    const { error } = await supabase.from('profiles').update({ wechat_token: v.trim() || null }).eq('id', u.id)
-    if (error) { setErr(error.code === '42703' ? '保存失败：还没运行 072 迁移。' : error.message); return }
-    setMsg(v.trim() ? `已绑定 ${u.name} 的微信通知。` : `已取消 ${u.name} 的微信通知。`); load()
-  }
   const reset = async (u: User) => {
     setErr(''); setMsg('')
     const [r, e] = await callApi<{ password: string }>('reset-password', { userId: u.id })
@@ -82,13 +71,12 @@ export default function Accounts() {
       )}
       <div className="table-wrap">
         <table style={{ minWidth: 760 }}>
-          <thead><tr><th>姓名</th><th>登录账号</th><th>角色</th><th>联系方式</th><th>负责房源</th><th>微信通知</th><th>状态</th><th>操作</th></tr></thead>
+          <thead><tr><th>姓名</th><th>登录账号</th><th>角色</th><th>联系方式</th><th>负责房源</th><th>状态</th><th>操作</th></tr></thead>
           <tbody>
             {users.map((u) => (
               <tr key={u.id}>
                 <td><b>{u.name}</b></td><td>{u.account}</td><td>{ROLE_LABEL[u.role]}</td><td>{u.contact ?? '—'}</td>
                 <td>{u.role === 'assistant' ? `${count(u.id)} 个` : '—'}</td>
-                <td>{u.wechat_token ? <span className="chip green" style={{ marginLeft: 0 }}>已绑定</span> : <span className="muted small">未绑定</span>} <button className="task-btn" onClick={() => bindWechat(u)}>{u.wechat_token ? '修改' : '绑定'}</button></td>
                 <td><span className={u.active ? 'chip green' : 'chip gray'}>{u.active ? '启用' : '停用'}</span></td>
                 <td className="btn-row" style={{ margin: 0 }}>
                   <button className="ghost" onClick={() => reset(u)}>重置密码</button>
@@ -99,6 +87,8 @@ export default function Accounts() {
           </tbody>
         </table>
       </div>
+
+      <NotifySettings />
 
       <h2 style={{ marginTop: 28 }}>房源分配</h2>
       <div className="table-wrap">
@@ -152,6 +142,65 @@ function AddUser({ onClose, onDone }: { onClose: () => void; onDone: (name: stri
           <button className="primary small-btn" disabled={busy} onClick={save}>{busy ? '创建中…' : '创建'}</button>
           <button className="ghost" onClick={onClose}>取消</button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+const GROUPS: { key: 'repairman' | 'cleaner' | 'assistant'; label: string; hint: string }[] = [
+  { key: 'repairman', label: '师傅群', hint: '派维修单时发到这里' },
+  { key: 'cleaner', label: '清洁群', hint: '派清洁单时发到这里' },
+  { key: 'assistant', label: '助理群', hint: '师傅接单、完成、清洁上报损坏时发到这里' },
+]
+
+function NotifySettings() {
+  const [vals, setVals] = useState<Record<string, string>>({})
+  const [msg, setMsg] = useState('')
+  const [err, setErr] = useState('')
+  const [busy, setBusy] = useState('')
+  useEffect(() => {
+    supabase.from('app_settings').select('key, value').like('key', 'wecom_%').then(({ data, error }) => {
+      if (error) { setErr(error.code === '42P01' || error.message.includes('app_settings') ? '还没运行 073 迁移，运行后才能设置。' : error.message); return }
+      const m: Record<string, string> = {}
+      ;(data ?? []).forEach((r) => { m[String(r.key).replace('wecom_', '')] = r.value ?? '' })
+      setVals(m)
+    })
+  }, [])
+  const save = async (k: string) => {
+    setMsg(''); setErr(''); setBusy(k)
+    const { error } = await supabase.from('app_settings').upsert({ key: `wecom_${k}`, value: (vals[k] ?? '').trim() || null, updated_at: new Date().toISOString() })
+    setBusy('')
+    if (error) { setErr(error.message); return }
+    setMsg('已保存。')
+  }
+  const test = async (k: string) => {
+    setMsg(''); setErr(''); setBusy(`t${k}`)
+    const [, e] = await callApi('notify', { test: k })
+    setBusy('')
+    if (e) setErr(e); else setMsg('测试消息已发出，请到企业微信群里看一下。')
+  }
+  return (
+    <div>
+      <h2 style={{ marginTop: 28 }}>企业微信通知</h2>
+      <p className="muted small">在企业微信群里添加“群机器人”，把它的 webhook 地址粘贴到下面。没填的群不会发通知。请把地址当密码保管，别发给无关的人。</p>
+      {msg && <div className="ok">{msg}</div>}
+      {err && <div className="err-box">{err}</div>}
+      <div className="table-wrap">
+        <table style={{ minWidth: 760 }}>
+          <thead><tr><th>群</th><th>用途</th><th>webhook 地址</th><th>操作</th></tr></thead>
+          <tbody>
+            {GROUPS.map((g) => (
+              <tr key={g.key}>
+                <td><b>{g.label}</b></td><td className="muted small">{g.hint}</td>
+                <td><input style={{ width: '100%', minWidth: 300 }} type="password" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=…" value={vals[g.key] ?? ''} onChange={(e) => setVals({ ...vals, [g.key]: e.target.value })} /></td>
+                <td className="btn-row" style={{ margin: 0 }}>
+                  <button className="primary small-btn" disabled={busy === g.key} onClick={() => save(g.key)}>保存</button>
+                  <button className="ghost" disabled={busy === `t${g.key}`} onClick={() => test(g.key)}>发测试消息</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   )
