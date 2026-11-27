@@ -1,3 +1,4 @@
+import JSZip from 'jszip'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
@@ -211,8 +212,7 @@ function EvidenceModal({ claim, onClose }: { claim: Claim; onClose: () => void }
   const download = async () => {
     setBusy(true); setErr('')
     try {
-      const JSZip = (await import('jszip')).default
-      const zip = new JSZip()
+            const zip = new JSZip()
       let n = 0
       for (const g of groups ?? []) {
         const f = zip.folder(g.title)!

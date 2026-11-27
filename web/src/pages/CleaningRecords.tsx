@@ -1,3 +1,4 @@
+import JSZip from 'jszip'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
@@ -54,8 +55,7 @@ export default function CleaningRecords() {
   const download = async (rows: Rec[], key: string, name: string) => {
     setBusy(key); setErr('')
     try {
-      const JSZip = (await import('jszip')).default
-      const zip = new JSZip()
+            const zip = new JSZip()
       let n = 0
       for (const r of rows) {
         const folder = zip.folder(`${dateOf(r) || '未知日期'} ${r.description ?? '清洁'}`.replace(/[\\/:*?"<>|]/g, ' ').trim())!
