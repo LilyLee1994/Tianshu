@@ -3,6 +3,7 @@ import { useAuth, ROLE_LABEL } from '../lib/auth'
 import { callApi } from '../lib/api'
 import { uploadPhotos } from '../lib/photos'
 import { chipOf } from '../lib/ui'
+import { supabase } from '../lib/supabase'
 
 interface Item { id: number; type: string; description: string | null; status: string; urgent: boolean; planned_date: string | null; property: { name: string } | null }
 interface Detail {
@@ -19,6 +20,7 @@ export default function WorkerApp() {
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(true)
   const isClean = profile?.role === 'cleaner'
+  const [pwOpen, setPwOpen] = useState(false)
 
   const load = useCallback(async () => {
     const [r, e] = await callApi<{ orders: Item[] }>('worker-orders', {})
@@ -29,7 +31,8 @@ export default function WorkerApp() {
 
   return (
     <div className="mobile">
-      <header><div><b>{isClean ? '清洁任务' : '维修工单'}</b><div className="small">{profile?.name} · {ROLE_LABEL[profile!.role]}</div></div><button onClick={signOut}>退出</button></header>
+      <header><div><b>{isClean ? '清洁任务' : '维修工单'}</b><div className="small">{profile?.name} · {ROLE_LABEL[profile!.role]}</div></div><span style={{ display: 'flex', gap: 8 }}><button onClick={() => setPwOpen(true)}>修改密码</button><button onClick={signOut}>退出</button></span></header>
+      {pwOpen && <PasswordModal onClose={() => setPwOpen(false)} />}
       {err && <div className="err-box">{err}</div>}
       {open === null ? (
         <>
@@ -129,6 +132,39 @@ function OrderView({ id, isClean, onBack }: { id: number; isClean: boolean; onBa
           <button className="ghost big" onClick={() => { setDamage(false); setFiles([]) }}>← 取消，回到任务</button>
         </section>
       )}
+    </div>
+  )
+}
+
+function PasswordModal({ onClose }: { onClose: () => void }) {
+  const [a, setA] = useState('')
+  const [b, setB] = useState('')
+  const [msg, setMsg] = useState('')
+  const [ok, setOk] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const save = async () => {
+    if (a.length < 8) { setMsg('密码至少 8 位。'); return }
+    if (a !== b) { setMsg('两次输入的密码不一样。'); return }
+    setBusy(true); setMsg('')
+    const { error } = await supabase.auth.updateUser({ password: a })
+    setBusy(false)
+    if (error) { setMsg(`修改失败：${error.message}`); return }
+    setOk(true)
+  }
+  return (
+    <div className="modal-bg" onClick={onClose}>
+      <div className="modal" style={{ width: 'min(92vw, 420px)' }} onClick={(e) => e.stopPropagation()}>
+        <h2>修改密码</h2>
+        {ok ? <>
+          <p>密码已修改，下次登录请用新密码。</p>
+          <div className="btn-row"><button onClick={onClose}>好的</button></div>
+        </> : <>
+          <label>新密码（至少 8 位）<input type="password" autoFocus value={a} onChange={(e) => setA(e.target.value)} /></label>
+          <label>再输入一次<input type="password" value={b} onChange={(e) => setB(e.target.value)} /></label>
+          {msg && <div className="err">{msg}</div>}
+          <div className="btn-row"><button disabled={busy} onClick={save}>{busy ? '保存中…' : '保存'}</button><button className="ghost" onClick={onClose}>取消</button></div>
+        </>}
+      </div>
     </div>
   )
 }
