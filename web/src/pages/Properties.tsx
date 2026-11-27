@@ -441,11 +441,11 @@ function EditForm({ row, isAdmin, assistants, onCancel, onSaved }: { row: Row; i
       <h2>编辑 {row.name}</h2>
       <div className="form-grid">
         {f('Hostaway 房源 ID（填了才能同步订单、日历和差评；在 Hostaway 房源页网址里能找到）', p.hostaway_id, (v) => setP({ ...p, hostaway_id: v }))}
+        <label>运营模式<select value={dt.self_operated ? '自营' : '托管'} onChange={(e) => setDt({ ...dt, self_operated: e.target.value === '自营' })}><option value="托管">房东托管</option><option value="自营">自营（公司租下来运营）</option></select></label>
         {isAdmin && <>
           {f('房源名称', p.name, (v) => setP({ ...p, name: v }))}
           {f('地址', p.address, (v) => setP({ ...p, address: v }))}
           {f('区域', p.region, (v) => setP({ ...p, region: v }))}
-          <label>运营模式<select value={dt.self_operated ? '自营' : '托管'} onChange={(e) => setDt({ ...dt, self_operated: e.target.value === '自营' })}><option value="托管">房东托管</option><option value="自营">自营（公司租下来运营）</option></select></label>
           {sel('清洁由谁做（房东自己做的，不自动派清洁单）', p.cleaning_by, ['清洁公司', '房东自己'], (v) => setP({ ...p, cleaning_by: v }))}
           {f('佣金比例（%，房东结算用）', p.commission, (v) => setP({ ...p, commission: v }))}
           {f('Airbnb 房源链接', p.airbnb_url, (v) => setP({ ...p, airbnb_url: v }))}
