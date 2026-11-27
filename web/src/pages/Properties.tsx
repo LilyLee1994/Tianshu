@@ -352,6 +352,7 @@ function Detail({ row: r, canEdit, isAdmin, onEdit, onChanged }: { row: Row; can
       <dl>
         <dt>地址</dt><dd>{dash(r.address)}</dd>
         <dt>区域</dt><dd>{dash(r.region)}</dd>
+        <dt>Hostaway ID</dt><dd>{r.hostaway_id ?? <span className="muted">未关联{isAdmin ? '（点编辑填写）' : '（请管理员填写）'}</span>}</dd>
         <dt>主责助理</dt><dd>{dash(r.assistant?.name)}</dd>
         <dt>清洁由谁做</dt><dd>{r.cleaning_by === '房东自己' ? '房东自己' : 'Alisa'}</dd>
         <dt>户型</dt><dd>{dash(d?.bedrooms)} 房 {dash(d?.bathrooms)} 卫 · 可住 {dash(d?.max_guests)} 人</dd>
@@ -444,7 +445,7 @@ function EditForm({ row, isAdmin, assistants, onCancel, onSaved }: { row: Row; i
           {f('佣金比例（%，房东结算用）', p.commission, (v) => setP({ ...p, commission: v }))}
           {f('Airbnb 房源链接', p.airbnb_url, (v) => setP({ ...p, airbnb_url: v }))}
           {f('Booking 房源链接', p.booking_url, (v) => setP({ ...p, booking_url: v }))}
-          {!row.legacy && f('Hostaway 房源 ID（选填：房源在 Hostaway 上架后填，同步时就能对上）', p.hostaway_id, (v) => setP({ ...p, hostaway_id: v }))}
+          {f('Hostaway 房源 ID（填了才能同步订单、日历和差评；在 Hostaway 房源页网址里能找到）', p.hostaway_id, (v) => setP({ ...p, hostaway_id: v }))}
           <label>主责助理<select value={p.assistant_id} onChange={(e) => setP({ ...p, assistant_id: e.target.value })}>
             <option value="">未分配</option>{assistants.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select></label>
