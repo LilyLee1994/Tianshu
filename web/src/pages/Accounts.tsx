@@ -160,7 +160,7 @@ function NotifySettings() {
   const [busy, setBusy] = useState('')
   useEffect(() => {
     supabase.from('app_settings').select('key, value').like('key', 'wecom_%').then(({ data, error }) => {
-      if (error) { setErr(error.code === '42P01' || error.message.includes('app_settings') ? '还没运行 073 迁移，运行后才能设置。' : error.message); return }
+      if (error) { setErr(`读取设置失败（${error.code ?? ''}）：${error.message}`); return }
       const m: Record<string, string> = {}
       ;(data ?? []).forEach((r) => { m[String(r.key).replace('wecom_', '')] = r.value ?? '' })
       setVals(m)
