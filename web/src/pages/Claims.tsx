@@ -31,7 +31,7 @@ export default function Claims() {
   const [q, setQ] = useState('')
   const [adding, setAdding] = useState(false)
   const [upd, setUpd] = useState<Claim | null>(null)
-  const [pics, setPics] = useState<string[] | null>(null)
+  const [evid, setEvid] = useState<Claim | null>(null)
   const [msg, setMsg] = useState('')
   const makeRepair = async (r: Claim) => {
     const tag = `【索赔#${r.id}】`
@@ -91,7 +91,7 @@ export default function Claims() {
               <td className="btn-row" style={{ margin: 0 }}>
                 <button className="ghost" onClick={() => setUpd(r)}>更新状态</button>
                 <button className="ghost" onClick={() => makeRepair(r)}>生成维修工单</button>
-                {r.photos?.length > 0 && <button className="ghost" onClick={async () => setPics(await signedUrls(r.photos))}>证据</button>}
+                <button className="ghost" onClick={() => setEvid(r)}>证据</button>
               </td>
             </tr>
           ))}</tbody>
@@ -101,15 +101,7 @@ export default function Claims() {
 
       {adding && <AddModal defaultProp={onlyProp} props={isAssistant ? props.filter((x) => !!x.assistant_id && cover.has(x.assistant_id)) : props} me={profile?.id ?? ''} onClose={() => setAdding(false)} onSaved={() => { setAdding(false); setMsg('已登记。'); load() }} />}
       {upd && <UpdateModal row={upd} onClose={() => setUpd(null)} onSaved={() => { setUpd(null); setMsg('已更新。'); load() }} />}
-      {pics && (
-        <div className="modal-bg" onClick={() => setPics(null)}>
-          <div className="modal" style={{ width: 640 }} onClick={(e) => e.stopPropagation()}>
-            <h2>证据照片</h2>
-            {pics.length ? pics.map((u) => <img key={u} src={u} style={{ maxWidth: '100%', borderRadius: 8 }} />) : <p className="muted">照片读取失败。</p>}
-            <button className="ghost" onClick={() => setPics(null)}>关闭</button>
-          </div>
-        </div>
-      )}
+      {evid && <EvidenceModal claim={evid} onClose={() => setEvid(null)} />}
     </div>
   )
 }
@@ -181,6 +173,82 @@ function UpdateModal({ row, onClose, onSaved }: { row: Claim; onClose: () => voi
         </>}
         {err && <div className="err">{err}</div>}
         <div className="btn-row"><button disabled={busy} onClick={save}>{busy ? '保存中…' : '保存'}</button><button className="ghost" onClick={onClose}>取消</button></div>
+      </div>
+    </div>
+  )
+}
+
+// 证据：入住前最近一次清洁照 + 入住后清洁照 + 清洁工上报的损坏照；可一键打包下载
+function EvidenceModal({ claim, onClose }: { claim: Claim; onClose: () => void }) {
+  type Grp = { title: string; note?: string; paths: string[] }
+  const [groups, setGroups] = useState<Grp[] | null>(null)
+  const [urls, setUrls] = useState<Record<string, string>>({})
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    (async () => {
+      type W = { id: number; done_date: string | null; created_at: string; photos: string[] | null; damage_photos: string[] | null }
+      let w: W | null = null
+      const wid = (claim as unknown as { work_order_id?: number | null }).work_order_id
+      if (wid) w = ((await supabase.from('work_orders').select('id, done_date, created_at, photos, damage_photos').eq('id', wid).maybeSingle()).data as W | null)
+      const ref = w?.done_date ?? claim.occurred_date
+      const prev = (await supabase.from('work_orders').select('id, done_date, photos').eq('property_id', claim.property_id).eq('type', '清洁').eq('status', '已完成')
+        .lt('done_date', ref).order('done_date', { ascending: false }).limit(5)).data as { id: number; done_date: string; photos: string[] | null }[] | null
+      const before = (prev ?? []).find((x) => x.id !== w?.id && (x.photos?.length ?? 0) > 0)
+      const g: Grp[] = []
+      g.push({ title: '入住前最近一次清洁', note: before ? `${before.done_date} 清洁完成` : '没有找到入住前的清洁照片', paths: before?.photos ?? [] })
+      g.push({ title: '入住后清洁照', note: w?.done_date ? `${w.done_date} 清洁完成` : undefined, paths: w?.photos ?? [] })
+      g.push({ title: '清洁工上报的损坏照', paths: (w?.damage_photos?.length ? w.damage_photos : claim.photos) ?? [] })
+      setGroups(g)
+      const all = g.flatMap((x) => x.paths)
+      const u = await signedUrls(all)
+      setUrls(Object.fromEntries(all.map((p, i) => [p, u[i]])))
+    })()
+  }, [claim])
+
+  const total = (groups ?? []).reduce((n, g) => n + g.paths.length, 0)
+  const download = async () => {
+    setBusy(true); setErr('')
+    try {
+      const JSZip = (await import('jszip')).default
+      const zip = new JSZip()
+      let n = 0
+      for (const g of groups ?? []) {
+        const f = zip.folder(g.title)!
+        let i = 0
+        for (const p of g.paths) {
+          const u = urls[p]; if (!u) continue
+          const r = await fetch(u)
+          if (!r.ok) throw new Error(`有照片下载失败（${r.status}），请关掉重开再试。`)
+          f.file(`${++i}.jpg`, await r.blob()); n++
+        }
+      }
+      if (!n) throw new Error('没有可下载的照片。')
+      const blob = await zip.generateAsync({ type: 'blob' })
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob)
+      a.download = `索赔证据-${(claim.property?.name ?? '').replace(/[\\/:*?"<>|]/g, ' ')}-${claim.occurred_date}.zip`; a.click(); URL.revokeObjectURL(a.href)
+    } catch (e) { setErr((e as Error).message) }
+    setBusy(false)
+  }
+
+  return (
+    <div className="modal-bg" onClick={onClose}>
+      <div className="modal" style={{ width: 720 }} onClick={(e) => e.stopPropagation()}>
+        <h2>证据照片 · {claim.property?.name}</h2>
+        <p className="muted small">提交平台需要：入住前的清洁照 + 入住后的清洁照/损坏照。</p>
+        {!groups && <p className="muted">加载中…</p>}
+        {(groups ?? []).map((g) => (
+          <div key={g.title} style={{ marginBottom: 12 }}>
+            <b>{g.title}</b> <span className="muted small">{g.note ?? ''}{g.paths.length ? `（${g.paths.length} 张）` : ''}</span>
+            <div className="pics">{g.paths.map((p) => urls[p] && <a key={p} href={urls[p]} target="_blank" rel="noreferrer"><img src={urls[p]} /></a>)}{!g.paths.length && <p className="muted small">暂无</p>}</div>
+          </div>
+        ))}
+        {err && <p className="err">{err}</p>}
+        <div className="btn-row">
+          <button onClick={download} disabled={busy || !total}>{busy ? '打包中…' : `一键下载全部（${total} 张）`}</button>
+          <button className="ghost" onClick={onClose}>关闭</button>
+        </div>
       </div>
     </div>
   )
