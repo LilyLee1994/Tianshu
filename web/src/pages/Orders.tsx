@@ -127,13 +127,7 @@ function OrderRow({ o, workers, onUpdate, focus }: { o: Order; workers: Worker[]
     <tr id={`wo-${o.id}`} className={focus ? 'focus-row' : undefined}>
       <td>{o.created_at.slice(5, 10).replace('-', '/')}</td>
       <td><b>{o.property?.name}</b>{o.urgent && <span className="chip amber">次日入住</span>}</td>
-      <td>{o.type}</td><td>{o.description ?? '—'}{o.damage_report && (o.damage_handled
-        ? <div className="muted small">清洁上报损坏（已处理）：{o.damage_report}</div>
-        : <div className="err small">⚠ 清洁上报损坏：{o.damage_report}
-            <div className="btn-row" style={{ margin: '6px 0 0' }}>
-              <button className="task-btn" onClick={() => nav(`/claims?property=${o.property_id}`)}>去提索赔</button>
-              <button className="task-btn" onClick={() => onUpdate(o.id, { damage_handled: true }, '已标记为已处理。')}>已处理</button>
-            </div></div>)}</td><td>{who}</td>
+      <td>{o.type}</td><td>{o.description ?? '—'}{o.damage_report && <div className="muted small">清洁上报损坏：{o.damage_report} <button className="task-btn" onClick={() => nav(`/claims?property=${o.property_id}`)}>已转入索赔，去查看</button></div>}</td><td>{who}</td>
       <td><span className={chipOf(o.status)}>{o.status}</span></td>
       <td>{o.type === '清洁' ? '—' : `${money(o.amount)}（${o.payer}）`}</td>
       <td>{action}{nPics > 0 && <button className="ghost" onClick={showPics}>看照片（{nPics}）</button>}
