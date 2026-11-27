@@ -168,3 +168,5 @@ td .ghost, td button.ghost { white-space: nowrap; }
 /* 卡片不被挤扁：内容多高就多高（之前把最小高度去掉后，列表里的卡片被压缩，文字溢出） */
 .mcard { flex: 0 0 auto; height: auto; overflow: visible; }
 .wlist > *, .mobile > * { flex-shrink: 0; }
+
+.mcard.urgent.now { background: #f8c6c0; border: 2px solid #d93c2f; }

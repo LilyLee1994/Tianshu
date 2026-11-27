@@ -20,6 +20,9 @@ function useWide() {
   return w
 }
 
+// 排序：当天入住（最紧）→ 次日入住 → 其他紧急 → 普通单；已完成的放最后
+const rank = (o: Item) => o.status === '已完成' ? 9 : !o.urgent ? 3 : o.urgent_label === '当天入住' ? 0 : o.urgent_label === '次日入住' ? 1 : 2
+
 export default function WorkerApp() {
   const { profile, signOut } = useAuth()
   const [items, setItems] = useState<Item[]>([])
@@ -45,11 +48,11 @@ export default function WorkerApp() {
       {(() => {
         const list = (
           <>
-            {!loading && items.length > 0 && <p className="muted small" style={{ margin: 0 }}>排序：紧急的在最前（红色，写明了为什么紧急），其余按退房日从早到晚；已完成的放最后。</p>}
+            {!loading && items.length > 0 && <p className="muted small" style={{ margin: 0 }}>排序：当天入住的最紧急，排第一；然后是次日入住的，再是其他紧急；其余按退房日从早到晚，已完成的放最后。</p>}
             {loading && <p className="muted">加载中…</p>}
             {!loading && !items.length && <p className="muted pad">这里没有任务。助理派单后会出现在这里。</p>}
-            {[...items].sort((a, b) => Number(a.status === '已完成') - Number(b.status === '已完成') || Number(b.urgent) - Number(a.urgent) || (a.planned_date ?? '9999').localeCompare(b.planned_date ?? '9999')).map((o) => (
-            <button key={o.id} className={`${o.urgent && o.status !== '已完成' ? 'mcard urgent' : 'mcard'}${wide && open === o.id ? ' on' : ''}`} onClick={() => setOpen(o.id)}>
+            {[...items].sort((a, b) => rank(a) - rank(b) || (a.planned_date ?? '9999').localeCompare(b.planned_date ?? '9999')).map((o) => (
+            <button key={o.id} className={`${o.urgent && o.status !== '已完成' ? (o.urgent_label === '当天入住' ? 'mcard urgent now' : 'mcard urgent') : 'mcard'}${wide && open === o.id ? ' on' : ''}`} onClick={() => setOpen(o.id)}>
               <div className="mcard-top">
                 <span className="mcard-name"><b>{o.property?.name}</b>{o.urgent && o.status !== '已完成' && <span className="chip amber">紧急{o.urgent_label ? ` · ${o.urgent_label}` : ''}</span>}</span>
                 {o.status !== '已派单' && <span className={chipOf(o.status)} style={{ marginLeft: 0 }}>{o.status}</span>}
