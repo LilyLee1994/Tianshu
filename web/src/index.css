@@ -170,3 +170,12 @@ td .ghost, td button.ghost { white-space: nowrap; }
 .wlist > *, .mobile > * { flex-shrink: 0; }
 
 .mcard.urgent.now { background: #f8c6c0; border: 2px solid #d93c2f; }
+
+/* 清洁记录页 */
+.cr-list { display: flex; flex-direction: column; gap: 14px; }
+.cr-card { background: #fff; border: 1px solid #e1e5ea; border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+.cr-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cr-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.cr-pic { position: relative; padding: 0; border: 0; background: #eef1f4; border-radius: 8px; overflow: hidden; aspect-ratio: 4 / 3; cursor: zoom-in; }
+.cr-pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cr-tag { position: absolute; left: 6px; top: 6px; background: #d93c2f; color: #fff; font-size: 12px; padding: 1px 8px; border-radius: 10px; }
