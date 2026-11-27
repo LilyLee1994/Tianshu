@@ -9,7 +9,7 @@ import { signedUrls, uploadPhotos } from '../lib/photos'
 
 const PAID: string[] = ['已赔付', '客人直接赔付']
 const STATUSES = ['待提交', '联系客人中', '客人直接赔付', '已提交平台', '平台处理中', '已赔付', '被驳回', '放弃'] as const
-const PLATFORMS = ['Airbnb', 'Booking.com', '其他'] as const
+const PLATFORMS = ['Airbnb', 'Booking.com', 'Terri Scheer', 'Turvi', '其他'] as const
 const chip = (s: string) => (s === '已赔付' || s === '客人直接赔付' ? 'chip green' : s === '被驳回' || s === '放弃' ? 'chip gray' : s === '待提交' ? 'chip amber' : 'chip blue')
 
 interface Claim {
@@ -138,7 +138,7 @@ function AddModal({ props, me, defaultProp, onClose, onSaved }: { props: Prop[];
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h2>新增索赔</h2>
         <label>房源<select value={f.property_id} onChange={(e) => setF({ ...f, property_id: e.target.value })}><option value="">请选择</option>{sorted.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
-        <label>向哪个平台索赔<select value={f.platform} onChange={(e) => setF({ ...f, platform: e.target.value })}>{PLATFORMS.map((x) => <option key={x}>{x}</option>)}</select></label>
+        <label>向谁索赔（平台或保险）<select value={f.platform} onChange={(e) => setF({ ...f, platform: e.target.value })}>{PLATFORMS.map((x) => <option key={x}>{x}</option>)}</select></label>
         <label>发生日期（退房日）<input type="date" value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} /></label>
         <label>入住人姓名<input value={f.guest} onChange={(e) => setF({ ...f, guest: e.target.value })} placeholder="订单上的客人姓名" /></label>
         <label>索赔内容<input value={f.content} onChange={(e) => setF({ ...f, content: e.target.value })} placeholder="例如：客人损坏沙发垫" /></label>
