@@ -49,9 +49,12 @@ export default function WorkerApp() {
             {!loading && !items.length && <p className="muted pad">这里没有任务。助理派单后会出现在这里。</p>}
             {[...items].sort((a, b) => Number(a.status === '已完成') - Number(b.status === '已完成') || Number(b.urgent) - Number(a.urgent) || (a.planned_date ?? '9999').localeCompare(b.planned_date ?? '9999')).map((o) => (
             <button key={o.id} className={`${o.urgent && o.status !== '已完成' ? 'mcard urgent' : 'mcard'}${wide && open === o.id ? ' on' : ''}`} onClick={() => setOpen(o.id)}>
-              <div><b>{o.property?.name}</b>{o.urgent && <span className="chip amber">紧急</span>}</div>
-              <div>{o.type} · {o.description ?? ''}</div>
-              <div><span className={chipOf(o.status)} style={{ marginLeft: 0 }}>{o.status}</span></div>
+              <div className="mcard-top">
+                <span className="mcard-name"><b>{o.property?.name}</b>{o.urgent && o.status !== '已完成' && <span className="chip amber">紧急</span>}</span>
+                {o.status !== '已派单' && <span className={chipOf(o.status)} style={{ marginLeft: 0 }}>{o.status}</span>}
+              </div>
+              <div className="mcard-desc">{o.type} · {o.description ?? ''}</div>
+              {o.planned_date && <div className="muted small">{o.type === '清洁' ? '退房日' : '计划日'}：{o.planned_date.slice(5)}</div>}
             </button>
           ))}
           </>
