@@ -230,7 +230,7 @@ function MoneyLog({ propertyId }: { propertyId: number }) {
         const rv = Array.isArray(x.review) ? x.review[0] : x.review
         out.push({ date: x.handled_date ?? x.updated_at.slice(0, 10), item: '差评赔偿', text: `${rv?.rating != null ? `${rv.rating} 分差评` : '差评'}${x.note ? `：${x.note}` : ''}`, amt: -Number(x.comp_amount), payer: x.payer })
       }
-      for (const x of w.data ?? []) if (Number(x.amount) > 0) out.push({ date: x.done_date ?? x.planned_date ?? x.created_at.slice(0, 10), item: `工单·${x.type}`, text: `${x.description ?? ''}${x.status === '已完成' ? '' : `（${x.status}）`}`, amt: -Number(x.amount), payer: x.payer === '待定' ? null : x.payer })
+      for (const x of w.data ?? []) if (Number(x.amount) > 0) out.push({ date: x.done_date ?? x.planned_date ?? x.created_at.slice(0, 10), item: x.type, text: `${x.description ?? ''}${x.status === '已完成' ? '' : `（${x.status}）`}`, amt: -Number(x.amount), payer: x.payer === '待定' ? null : x.payer })
       for (const x of lg.data ?? []) out.push({ date: x.occurred_date, item: `款项·${x.category}`, text: `${x.kind}${x.guest_name ? ` · ${x.guest_name}` : ''}${x.reason ? `：${x.reason}` : ''}`, amt: Number(x.amount), payer: x.payer })
       out.sort((a, b) => b.date.localeCompare(a.date))
       setRows(out)
