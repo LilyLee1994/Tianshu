@@ -3,11 +3,12 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { callApi } from '../lib/api'
 import { money } from '../lib/ui'
+import { coveredAssistantIds } from '../lib/cover'
 
 interface St {
   id: number; property_id: number; month: string; reservations: number; nights: number; rental_income: number; commission_rate: number
   commission: number; platform_fee: number; gst: number; owner_costs: number; review_comp: number; claims_in: number; ledger_adj: number; adjustment: number; adjustment_note: string | null
-  payable: number; status: '草稿' | '已确认' | '已付'; property: { name: string; assistant: { name: string } | null } | null
+  payable: number; status: '草稿' | '已确认' | '已付'; property: { name: string; assistant_id: string | null; assistant: { name: string } | null } | null
 }
 
 // 默认看上个月（月底结算的是刚结束的月份）
@@ -17,6 +18,9 @@ const chip = (s: string) => (s === '已付' ? 'chip green' : s === '已确认' ?
 export default function Statements() {
   const { profile } = useAuth()
   const canEdit = profile?.role === 'admin' || profile?.role === 'finance'
+  const isAssistant = profile?.role === 'assistant'
+  const [cover, setCover] = useState<Set<string>>(new Set())
+  useEffect(() => { if (isAssistant && profile) coveredAssistantIds(profile.id).then(setCover) }, [profile?.id, isAssistant]) // eslint-disable-line react-hooks/exhaustive-deps
   const [month, setMonth] = useState(lastMonth())
   const [rows, setRows] = useState<St[]>([])
   const [q, setQ] = useState('')
@@ -34,9 +38,10 @@ export default function Statements() {
   useEffect(() => { load() }, [load])
 
   const shown = useMemo(() => rows.filter((r) => {
+    if (isAssistant && !(r.property?.assistant_id && cover.has(r.property.assistant_id))) return false
     if (q && !r.property?.name.toLowerCase().includes(q.toLowerCase())) return false
     return true
-  }), [rows, q])
+  }), [rows, q, isAssistant, cover])
 
   const total = useMemo(() => shown.reduce((a, r) => ({
     rental: a.rental + Number(r.rental_income), comm: a.comm + Number(r.commission), plat: a.plat + Number(r.platform_fee), gst: a.gst + Number(r.gst),
