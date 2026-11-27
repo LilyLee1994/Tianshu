@@ -108,10 +108,34 @@ function OrderView({ id, isClean, onBack, onChanged, wide }: { id: number; isCle
 
   if (!d) return <div>{!wide && <button className="back" onClick={onBack}>← 返回列表</button>}{err ? <div className="err-box">{err}</div> : <p className="muted">加载中…</p>}</div>
   const st = d.order.status
+  // 每次拍照或选图都是“加进去”，不会覆盖前面的：连续点“拍照”就是连拍，“从相册选”可以一次选多张
+  const addFiles = (list: FileList | null) => {
+    const add = Array.from(list ?? [])
+    if (!add.length) return
+    setFiles((prev) => {
+      const key = (f: File) => `${f.name}|${f.size}|${f.lastModified}`
+      const seen = new Set(prev.map(key))
+      return [...prev, ...add.filter((f) => !seen.has(key(f)))]
+    })
+  }
   const picker = (
-    <label className="file">拍照 / 选照片（{files.length} 张）
-      <input type="file" accept="image/*" multiple capture="environment" onChange={(e) => setFiles(Array.from(e.target.files ?? []))} />
-    </label>
+    <div className="photo-picker">
+      <div className="photo-btns">
+        <label className="file">📷 拍照
+          <input type="file" accept="image/*" capture="environment" onChange={(e) => { addFiles(e.target.files); e.target.value = '' }} />
+        </label>
+        <label className="file">🖼 从相册选（可多选）
+          <input type="file" accept="image/*" multiple onChange={(e) => { addFiles(e.target.files); e.target.value = '' }} />
+        </label>
+      </div>
+      <p className="muted small" style={{ margin: '6px 0' }}>已选 {files.length} 张{files.length > 0 && <> · <button type="button" className="linkish" onClick={() => setFiles([])}>全部清空</button></>}</p>
+      {files.length > 0 && <div className="photo-grid">{files.map((f, i) => (
+        <div className="photo-cell" key={`${f.name}${f.size}${i}`}>
+          <img src={URL.createObjectURL(f)} alt="" />
+          <button type="button" aria-label="删除" onClick={() => setFiles((p) => p.filter((_, k) => k !== i))}>×</button>
+        </div>
+      ))}</div>}
+    </div>
   )
 
   return (

@@ -248,3 +248,12 @@ button.is-pending::before { content: ''; display: inline-block; width: 12px; hei
 .dr-day.mid { background: #e3efee; }
 .dr-day.edge { background: #0f6b66; color: #fff; border-radius: 8px; }
 .dr-day.today { font-weight: 700; text-decoration: underline; }
+
+/* 师傅端拍照 / 选图 */
+.photo-btns { display: flex; gap: 10px; }
+.photo-btns .file { flex: 1; display: flex; align-items: center; justify-content: center; min-height: 52px; cursor: pointer; font-size: 15px; }
+.photo-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; }
+.photo-cell { position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden; background: #e8edf0; }
+.photo-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.photo-cell button { position: absolute; top: 2px; right: 2px; width: 24px; height: 24px; min-height: 0; padding: 0; border-radius: 50%; border: 0; background: rgba(0,0,0,.6); color: #fff; font-size: 16px; line-height: 24px; }
+.linkish { border: 0; background: transparent; color: #0f6b66; min-height: 0; padding: 0; text-decoration: underline; font-size: inherit; }
