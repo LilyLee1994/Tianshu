@@ -126,7 +126,12 @@ export default function Statements() {
             )}
           </tbody>
         </table>
-        {!shown.length && <p className="muted pad">{multi ? `${month} 至 ${endM}` : month} 还没有结算单。{canEdit ? '点上面的“生成这个月的草稿”。' : '等财务生成后这里会显示。'}</p>}
+        {!shown.length && <p className="muted pad">{
+          rows.length && !q ? `${multi ? `${month} 至 ${endM}` : month} 已经有结算单，但没有你负责的房源。`
+          : q ? '没有找到匹配的房源。'
+          : endM >= new Date().toISOString().slice(0, 7) ? `${multi ? `${month} 至 ${endM}` : month} 这个月还没结束，结算单要等月底之后由财务生成。` + (canEdit ? '月底后点上面的“生成这个月的草稿”。' : '')
+          : `${multi ? `${month} 至 ${endM}` : month} 的结算单财务还没有生成。` + (canEdit ? '点上面的“生成这个月的草稿”。' : '生成后这里会显示。')
+        }</p>}
       </div>
 
       {adj && <AdjustModal row={adj} busy={busy} onClose={() => setAdj(null)} onSave={(v, n) => act({ action: 'adjust', id: adj.id, adjustment: v, note: n }, '已保存调整。')} />}
